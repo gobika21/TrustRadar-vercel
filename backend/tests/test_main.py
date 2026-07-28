@@ -8,11 +8,11 @@ from app.main import app
 
 
 class _SqliteBackedCursor:
-    """Wraps a sqlite3 cursor so it can stand in for a psycopg2 cursor in tests.
+    """Wraps a sqlite3 cursor so it can stand in for a pg8000 cursor in tests.
 
-    Translates the `%s` placeholder style and always returns dict rows,
-    matching psycopg2.extras.RealDictCursor's behavior regardless of the
-    cursor_factory the caller requested.
+    Only translates the `%s` placeholder style -- fetchall/fetchone/description
+    are passed straight through as raw tuples, matching what pg8000 actually
+    returns (storage.py does its own tuple-to-dict conversion via .description).
     """
 
     def __init__(self, sqlite_cursor: sqlite3.Cursor) -> None:
@@ -21,38 +21,26 @@ class _SqliteBackedCursor:
     def execute(self, sql: str, params=None) -> None:
         self._cursor.execute(sql.replace("%s", "?"), params or [])
 
-    def fetchall(self) -> list[dict]:
-        columns = [d[0] for d in self._cursor.description]
-        return [dict(zip(columns, row)) for row in self._cursor.fetchall()]
+    @property
+    def description(self):
+        return self._cursor.description
 
-    def fetchone(self) -> dict | None:
-        row = self._cursor.fetchone()
-        if row is None:
-            return None
-        columns = [d[0] for d in self._cursor.description]
-        return dict(zip(columns, row))
+    def fetchall(self):
+        return self._cursor.fetchall()
 
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *exc):
-        return False
+    def fetchone(self):
+        return self._cursor.fetchone()
 
 
 class _SqliteBackedConnection:
-    """Stands in for a psycopg2 connection, backed by an in-memory SQLite db."""
+    """Stands in for a pg8000 connection, backed by an in-memory SQLite db."""
 
     def __init__(self) -> None:
         self._conn = sqlite3.connect(":memory:", check_same_thread=False)
+        self.autocommit = True
 
-    def cursor(self, cursor_factory=None) -> _SqliteBackedCursor:
+    def cursor(self) -> _SqliteBackedCursor:
         return _SqliteBackedCursor(self._conn.cursor())
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *exc):
-        return False
 
 
 class AnalyzeEndpointTests(unittest.TestCase):
@@ -60,7 +48,7 @@ class AnalyzeEndpointTests(unittest.TestCase):
         self._fake_pg = _SqliteBackedConnection()
         self._env_patch = patch.dict("os.environ", {"POSTGRES_URL": "postgres://fake"})
         self._env_patch.start()
-        self._pg_patch = patch("app.storage.psycopg2.connect", return_value=self._fake_pg)
+        self._pg_patch = patch("app.storage.pg8000.dbapi.connect", return_value=self._fake_pg)
         self._pg_patch.start()
         self._verify_patch = patch("app.main.verify_live", new=AsyncMock(return_value=[]))
         self._verify_patch.start()

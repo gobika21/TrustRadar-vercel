@@ -389,8 +389,7 @@ class TrustRadarScoringTests(unittest.TestCase):
 
     def _mock_postgres_connection(self, cursor: MagicMock) -> MagicMock:
         connection = MagicMock()
-        connection.__enter__.return_value = connection
-        connection.cursor.return_value.__enter__.return_value = cursor
+        connection.cursor.return_value = cursor
         return connection
 
     def test_storage_requires_postgres_url(self):
@@ -407,7 +406,7 @@ class TrustRadarScoringTests(unittest.TestCase):
         connection = self._mock_postgres_connection(cursor)
 
         with patch.dict("os.environ", {"POSTGRES_URL": "postgres://fake"}), patch(
-            "app.storage.psycopg2.connect", return_value=connection
+            "app.storage.pg8000.dbapi.connect", return_value=connection
         ):
             storage.save_analysis(
                 {
@@ -428,19 +427,20 @@ class TrustRadarScoringTests(unittest.TestCase):
         from app import storage
 
         cursor = MagicMock()
+        cursor.description = [("id",), ("created_at",), ("label",), ("input_json",), ("result_json",)]
         cursor.fetchall.return_value = [
-            {
-                "id": "entry-1",
-                "created_at": "2026-07-25T08:00:00+00:00",
-                "label": "example.com",
-                "input_json": json.dumps({"text": "", "linkUrl": "https://example.com", "files": []}),
-                "result_json": json.dumps({"score": 0, "tier": "Lower risk", "tier_level": "low"}),
-            }
+            (
+                "entry-1",
+                "2026-07-25T08:00:00+00:00",
+                "example.com",
+                json.dumps({"text": "", "linkUrl": "https://example.com", "files": []}),
+                json.dumps({"score": 0, "tier": "Lower risk", "tier_level": "low"}),
+            )
         ]
         connection = self._mock_postgres_connection(cursor)
 
         with patch.dict("os.environ", {"POSTGRES_URL": "postgres://fake"}), patch(
-            "app.storage.psycopg2.connect", return_value=connection
+            "app.storage.pg8000.dbapi.connect", return_value=connection
         ):
             entries = storage.list_analyses()
 
@@ -455,7 +455,7 @@ class TrustRadarScoringTests(unittest.TestCase):
         connection = self._mock_postgres_connection(cursor)
 
         with patch.dict("os.environ", {"POSTGRES_URL": "postgres://fake"}), patch(
-            "app.storage.psycopg2.connect", return_value=connection
+            "app.storage.pg8000.dbapi.connect", return_value=connection
         ):
             storage.clear_analyses()
 
