@@ -1,6 +1,8 @@
+import json
 import unittest
 import tempfile
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 from app.analysis import assert_job_url_accessible, build_recommendation, evidence_to_payload
 from app.metrics import build_usage_snapshot
@@ -385,34 +387,79 @@ class TrustRadarScoringTests(unittest.TestCase):
         self.assertEqual(usage["url_fetches"], 2)
         self.assertEqual(usage["dns_lookups"], 1)
 
-    def test_sqlite_history_round_trip(self):
+    def _mock_postgres_connection(self, cursor: MagicMock) -> MagicMock:
+        connection = MagicMock()
+        connection.__enter__.return_value = connection
+        connection.cursor.return_value.__enter__.return_value = cursor
+        return connection
+
+    def test_storage_requires_postgres_url(self):
         from app import storage
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            original_data_dir = storage.DATA_DIR
-            original_db_path = storage.DB_PATH
-            storage.DATA_DIR = Path(tmpdir)
-            storage.DB_PATH = storage.DATA_DIR / "history.sqlite3"
-            try:
-                storage.save_analysis(
-                    {
-                        "id": "entry-1",
-                        "createdAt": "2026-07-25T08:00:00+00:00",
-                        "label": "example.com",
-                        "input": {"text": "", "linkUrl": "https://example.com", "files": []},
-                        "result": {"score": 0, "tier": "Lower risk", "tier_level": "low"},
-                    }
-                )
+        with patch.dict("os.environ", {"POSTGRES_URL": ""}):
+            with self.assertRaises(RuntimeError):
+                storage.get_connection()
 
-                entries = storage.list_analyses()
-                self.assertEqual(entries[0]["id"], "entry-1")
-                self.assertEqual(storage.get_analysis("entry-1")["label"], "example.com")
+    def test_save_analysis_inserts_expected_row(self):
+        from app import storage
 
-                storage.clear_analyses()
-                self.assertEqual(storage.list_analyses(), [])
-            finally:
-                storage.DATA_DIR = original_data_dir
-                storage.DB_PATH = original_db_path
+        cursor = MagicMock()
+        connection = self._mock_postgres_connection(cursor)
+
+        with patch.dict("os.environ", {"POSTGRES_URL": "postgres://fake"}), patch(
+            "app.storage.psycopg2.connect", return_value=connection
+        ):
+            storage.save_analysis(
+                {
+                    "id": "entry-1",
+                    "createdAt": "2026-07-25T08:00:00+00:00",
+                    "label": "example.com",
+                    "input": {"text": "", "linkUrl": "https://example.com", "files": []},
+                    "result": {"score": 0, "tier": "Lower risk", "tier_level": "low"},
+                }
+            )
+
+        insert_sql, insert_params = cursor.execute.call_args_list[-1][0]
+        self.assertIn("INSERT INTO analyses", insert_sql)
+        self.assertEqual(insert_params[0], "entry-1")
+        self.assertEqual(insert_params[5], 0)
+
+    def test_list_analyses_maps_rows_to_history_entries(self):
+        from app import storage
+
+        cursor = MagicMock()
+        cursor.fetchall.return_value = [
+            {
+                "id": "entry-1",
+                "created_at": "2026-07-25T08:00:00+00:00",
+                "label": "example.com",
+                "input_json": json.dumps({"text": "", "linkUrl": "https://example.com", "files": []}),
+                "result_json": json.dumps({"score": 0, "tier": "Lower risk", "tier_level": "low"}),
+            }
+        ]
+        connection = self._mock_postgres_connection(cursor)
+
+        with patch.dict("os.environ", {"POSTGRES_URL": "postgres://fake"}), patch(
+            "app.storage.psycopg2.connect", return_value=connection
+        ):
+            entries = storage.list_analyses()
+
+        self.assertEqual(entries[0]["id"], "entry-1")
+        self.assertEqual(entries[0]["label"], "example.com")
+        self.assertEqual(entries[0]["result"]["score"], 0)
+
+    def test_clear_analyses_executes_delete(self):
+        from app import storage
+
+        cursor = MagicMock()
+        connection = self._mock_postgres_connection(cursor)
+
+        with patch.dict("os.environ", {"POSTGRES_URL": "postgres://fake"}), patch(
+            "app.storage.psycopg2.connect", return_value=connection
+        ):
+            storage.clear_analyses()
+
+        cursor.execute.assert_any_call("DELETE FROM analyses")
 
 
 if __name__ == "__main__":

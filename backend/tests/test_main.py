@@ -1,29 +1,75 @@
-import tempfile
+import sqlite3
 import unittest
-from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 from fastapi.testclient import TestClient
 
-from app import cache, rate_limit, storage
 from app.main import app
+
+
+class _SqliteBackedCursor:
+    """Wraps a sqlite3 cursor so it can stand in for a psycopg2 cursor in tests.
+
+    Translates the `%s` placeholder style and always returns dict rows,
+    matching psycopg2.extras.RealDictCursor's behavior regardless of the
+    cursor_factory the caller requested.
+    """
+
+    def __init__(self, sqlite_cursor: sqlite3.Cursor) -> None:
+        self._cursor = sqlite_cursor
+
+    def execute(self, sql: str, params=None) -> None:
+        self._cursor.execute(sql.replace("%s", "?"), params or [])
+
+    def fetchall(self) -> list[dict]:
+        columns = [d[0] for d in self._cursor.description]
+        return [dict(zip(columns, row)) for row in self._cursor.fetchall()]
+
+    def fetchone(self) -> dict | None:
+        row = self._cursor.fetchone()
+        if row is None:
+            return None
+        columns = [d[0] for d in self._cursor.description]
+        return dict(zip(columns, row))
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+class _SqliteBackedConnection:
+    """Stands in for a psycopg2 connection, backed by an in-memory SQLite db."""
+
+    def __init__(self) -> None:
+        self._conn = sqlite3.connect(":memory:", check_same_thread=False)
+
+    def cursor(self, cursor_factory=None) -> _SqliteBackedCursor:
+        return _SqliteBackedCursor(self._conn.cursor())
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
 
 
 class AnalyzeEndpointTests(unittest.TestCase):
     def setUp(self):
-        rate_limit._HITS.clear()
-        cache._CACHE.clear()
-        self._tmp_dir = tempfile.TemporaryDirectory()
-        self._db_patch = patch.object(storage, "DB_PATH", Path(self._tmp_dir.name) / "test.sqlite3")
-        self._db_patch.start()
+        self._fake_pg = _SqliteBackedConnection()
+        self._env_patch = patch.dict("os.environ", {"POSTGRES_URL": "postgres://fake"})
+        self._env_patch.start()
+        self._pg_patch = patch("app.storage.psycopg2.connect", return_value=self._fake_pg)
+        self._pg_patch.start()
         self._verify_patch = patch("app.main.verify_live", new=AsyncMock(return_value=[]))
         self._verify_patch.start()
         self.client = TestClient(app)
 
     def tearDown(self):
         self._verify_patch.stop()
-        self._db_patch.stop()
-        self._tmp_dir.cleanup()
+        self._pg_patch.stop()
+        self._env_patch.stop()
 
     def test_vague_message_with_no_scam_signal_is_blocked_before_scoring(self):
         response = self.client.post(

@@ -1,14 +1,11 @@
 from __future__ import annotations
 
-import time
-from collections import defaultdict
-
 from fastapi import HTTPException, Request
+
+from app.kv import get_redis
 
 WINDOW_SECONDS = 60
 MAX_REQUESTS_PER_WINDOW = 10
-
-_HITS: dict[str, list[float]] = defaultdict(list)
 
 
 def _client_ip(request: Request) -> str:
@@ -19,14 +16,17 @@ def _client_ip(request: Request) -> str:
 
 
 def enforce_rate_limit(request: Request) -> None:
+    redis = get_redis()
+    if redis is None:
+        return
+
     client_ip = _client_ip(request)
-    now = time.monotonic()
-    window_start = now - WINDOW_SECONDS
-    hits = _HITS[client_ip]
-    hits[:] = [ts for ts in hits if ts > window_start]
-    if len(hits) >= MAX_REQUESTS_PER_WINDOW:
+    key = f"ratelimit:{client_ip}"
+    count = redis.incr(key)
+    if count == 1:
+        redis.expire(key, WINDOW_SECONDS)
+    if count > MAX_REQUESTS_PER_WINDOW:
         raise HTTPException(
             status_code=429,
             detail=f"Too many requests. Limit is {MAX_REQUESTS_PER_WINDOW} analyses per {WINDOW_SECONDS} seconds. Please wait and try again.",
         )
-    hits.append(now)

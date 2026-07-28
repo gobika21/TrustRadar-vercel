@@ -168,8 +168,8 @@ python -m unittest tests/test_scoring.py
 - Public web search uses DuckDuckGo HTML parsing and may vary by network availability.
 - RDAP/domain data can be incomplete for some TLDs.
 - Some job boards block automated access. In that case, TrustRadar shows an access error instead of scoring the URL as low or high risk.
-- Metrics are in-memory only and reset when the backend restarts.
-- History is stored locally in `backend/data/trustradar.sqlite3`, which is ignored by Git.
+- Metrics are in-memory per function instance and reset on cold start.
+- History is stored in Vercel Postgres; rate limiting and response caching use Vercel KV -- both required for the app to run on Vercel (see below).
 
 ## Suggested Next Improvements
 
@@ -178,4 +178,48 @@ python -m unittest tests/test_scoring.py
 - Add structured source cards for each web result.
 - Add sample demo scenarios.
 - Add authentication if deployed publicly.
+
+## Deploying to Vercel
+
+This repo is a copy of the AWS-deployed TrustRadar app, ported to run on Vercel
+instead of EC2/S3/CloudFront. The frontend and backend deploy together as a
+single Vercel project: static assets are served from `frontend/dist`, and all
+`/api/*` requests are routed to a Python serverless function at `api/index.py`
+that wraps the same FastAPI app (`backend/app/main.py`) used locally.
+
+Because serverless functions don't share memory or a local disk between
+invocations, two pieces of state that used to live on the EC2 box had to move
+to managed services:
+
+- **History storage** (`backend/app/storage.py`) -- was SQLite, now Postgres.
+- **Rate limiting and response caching** (`backend/app/rate_limit.py`,
+  `backend/app/cache.py`) -- was in-memory, now Vercel KV (Upstash Redis).
+
+### One-time setup
+
+1. Import this repo as a new Vercel project (connects it to this GitHub repo
+   for git-based deploys).
+2. In the Vercel project's **Storage** tab, add the **Postgres** integration
+   and the **KV** integration. Vercel automatically injects the connection
+   env vars this code expects: `POSTGRES_URL` and `KV_REST_API_URL` /
+   `KV_REST_API_TOKEN`.
+3. Add `ANTHROPIC_API_KEY` as a project environment variable (Settings ->
+   Environment Variables) to enable the agentic skills (JD analyzer, scam
+   classifier, vision OCR, search-relevance judge). Without it, the app still
+   works using the regex/heuristic fallbacks, same as when the key is unset
+   in local dev.
+4. Deploy. Vercel runs `frontend && npm install && npm run build` (see
+   `vercel.json`) and serves `frontend/dist` as static output, with
+   `api/index.py` handling everything under `/api/`.
+
+### Notes on behavior differences from the AWS version
+
+- Rate limiting is now a fixed-window counter in Redis (`INCR` + `EXPIRE`)
+  rather than the original sliding-window list -- functionally equivalent for
+  this app's limits (10 requests / 60s per IP), simpler to implement over a
+  REST-based Redis client.
+- The response cache pickles the cached payload (findings + `Evidence`
+  objects) and stores it base64-encoded in KV, since Evidence isn't natively
+  JSON-serializable. This is safe because only this app's own code ever
+  writes to that cache namespace.
 - Add production-safe logging and rate limiting.

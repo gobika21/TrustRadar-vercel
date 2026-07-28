@@ -1,11 +1,32 @@
 import unittest
+from unittest.mock import patch
 
 from app import cache
 
 
+class FakeRedis:
+    """Minimal in-memory stand-in for the Upstash Redis client used by cache.py."""
+
+    def __init__(self) -> None:
+        self._store: dict[str, str] = {}
+        self.set_calls: list[tuple[str, int | None]] = []
+
+    def get(self, key: str) -> str | None:
+        return self._store.get(key)
+
+    def set(self, key: str, value: str, ex: int | None = None) -> None:
+        self._store[key] = value
+        self.set_calls.append((key, ex))
+
+
 class CacheTests(unittest.TestCase):
     def setUp(self):
-        cache._CACHE.clear()
+        self.fake_redis = FakeRedis()
+        self._patch = patch("app.cache.get_redis", return_value=self.fake_redis)
+        self._patch.start()
+
+    def tearDown(self):
+        self._patch.stop()
 
     def test_miss_then_hit(self):
         self.assertIsNone(cache.get_cached_verification("Some job text", []))
@@ -24,11 +45,14 @@ class CacheTests(unittest.TestCase):
         cache.store_cached_verification("   ", [], "value")
         self.assertIsNone(cache.get_cached_verification("   ", []))
 
-    def test_expired_entry_is_not_returned(self):
+    def test_store_sets_ttl_on_the_kv_entry(self):
         cache.store_cached_verification("Some job text", [], "value")
-        key = cache._cache_key("Some job text", [])
-        cache._CACHE[key] = (0.0, "value")
-        self.assertIsNone(cache.get_cached_verification("Some job text", []))
+        self.assertEqual(self.fake_redis.set_calls, [(cache._cache_key("Some job text", []), cache.TTL_SECONDS)])
+
+    def test_returns_none_when_kv_not_configured(self):
+        with patch("app.cache.get_redis", return_value=None):
+            cache.store_cached_verification("Some job text", [], "value")
+            self.assertIsNone(cache.get_cached_verification("Some job text", []))
 
 
 if __name__ == "__main__":
