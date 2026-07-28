@@ -8,14 +8,42 @@ from urllib.parse import urlparse
 import pg8000.dbapi
 
 
+# Different Vercel Postgres marketplace providers (Neon, Prisma Postgres,
+# Supabase, ...) inject the connection string under different env var names.
+# Check them in order and use whichever is actually set.
+POSTGRES_URL_ENV_VARS = [
+    "POSTGRES_URL",
+    "DATABASE_URL",
+    "POSTGRES_PRISMA_URL",
+    "PRISMA_DATABASE_URL",
+    "POSTGRES_URL_NON_POOLING",
+]
+
+
+def _find_postgres_dsn() -> str | None:
+    for name in POSTGRES_URL_ENV_VARS:
+        value = os.environ.get(name)
+        if value:
+            return value
+    return None
+
+
 def get_connection():
-    dsn = os.environ.get("POSTGRES_URL")
+    dsn = _find_postgres_dsn()
     if not dsn:
         raise RuntimeError(
-            "POSTGRES_URL is not set. Add the Vercel Postgres integration to this "
-            "project (or set POSTGRES_URL locally) to enable history storage."
+            "No Postgres connection string found. Checked env vars: "
+            f"{', '.join(POSTGRES_URL_ENV_VARS)}. Add a Postgres integration to "
+            "this Vercel project (or set one of these locally) to enable history storage."
         )
     parsed = urlparse(dsn)
+    if parsed.scheme not in {"postgres", "postgresql"} or not parsed.hostname:
+        raise RuntimeError(
+            f"Found a connection string but it doesn't look like a direct Postgres DSN "
+            f"(scheme: {parsed.scheme!r}). If you're using Prisma Postgres, use the direct "
+            "connection string (not the prisma+postgres:// Accelerate URL) -- check your "
+            "provider's dashboard for a postgres:// or postgresql:// URL."
+        )
     connection = pg8000.dbapi.connect(
         host=parsed.hostname,
         port=parsed.port or 5432,
