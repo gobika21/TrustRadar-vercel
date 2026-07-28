@@ -8,7 +8,13 @@ from app.analysis import assert_job_url_accessible, build_recommendation, eviden
 from app.metrics import build_usage_snapshot
 from app.models import Evidence
 from app.scoring import evidence_score, pattern_check, score_to_tier
-from app.text_utils import domain_from_url, extract_urls, looks_like_job_content, looks_like_valid_jd
+from app.text_utils import (
+    domain_from_url,
+    extract_urls,
+    is_known_social_platform_domain,
+    looks_like_job_content,
+    looks_like_valid_jd,
+)
 from app.uploads import decode_text_upload
 from app.verification import build_search_query, rdap_lookup, search_result_severity
 
@@ -147,6 +153,15 @@ class TrustRadarScoringTests(unittest.TestCase):
     def test_looks_like_valid_jd_accepts_email_or_url(self):
         self.assertTrue(looks_like_valid_jd("Reach me at scammer@example.com for more."))
         self.assertTrue(looks_like_valid_jd("See https://example.com/offer for details."))
+
+    def test_is_known_social_platform_domain_recognizes_major_platforms(self):
+        self.assertTrue(is_known_social_platform_domain("facebook.com"))
+        self.assertTrue(is_known_social_platform_domain("www.linkedin.com"))
+        self.assertTrue(is_known_social_platform_domain("youtube.com"))
+
+    def test_is_known_social_platform_domain_rejects_employer_domains(self):
+        self.assertFalse(is_known_social_platform_domain("careersatagoda.com"))
+        self.assertFalse(is_known_social_platform_domain("example.com"))
 
     def test_targeted_scam_search_result_is_high_severity(self):
         detail = (

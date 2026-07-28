@@ -14,7 +14,14 @@ from bs4 import BeautifulSoup
 from app.agents.skills.search_synthesis import judge_search_relevance
 from app.metrics import METRICS
 from app.models import Evidence
-from app.text_utils import domain_from_url, extract_emails, extract_urls, is_known_ats_domain, registered_domain
+from app.text_utils import (
+    domain_from_url,
+    extract_emails,
+    extract_urls,
+    is_known_ats_domain,
+    is_known_social_platform_domain,
+    registered_domain,
+)
 
 
 BROWSER_HEADERS = {
@@ -311,11 +318,17 @@ def humanize_company_slug(value: str) -> str:
 
 
 async def verify_live(text: str, submitted_urls: list[str]) -> list[Evidence]:
-    urls = list(dict.fromkeys(submitted_urls + extract_urls(text)))
+    all_urls = list(dict.fromkeys(submitted_urls + extract_urls(text)))
+    urls = [
+        url for url in all_urls
+        if not (domain_from_url(url) and is_known_social_platform_domain(domain_from_url(url)))
+    ]
     emails = extract_emails(text)
     domains = sorted({domain_from_url(url) for url in urls if domain_from_url(url)})
     domains.extend(email.split("@", 1)[1].lower() for email in emails)
-    domains = sorted({registered_domain(domain) for domain in domains})
+    domains = sorted(
+        {registered_domain(domain) for domain in domains if not is_known_social_platform_domain(domain)}
+    )
 
     timeout = httpx.Timeout(8.0, connect=4.0)
     async with httpx.AsyncClient(timeout=timeout, headers=BROWSER_HEADERS) as client:

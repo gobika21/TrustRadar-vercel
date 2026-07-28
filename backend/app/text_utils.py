@@ -12,6 +12,20 @@ KNOWN_ATS_DOMAINS = {
     "workdayjobs.com",
 }
 
+KNOWN_SOCIAL_PLATFORM_DOMAINS = {
+    "facebook.com",
+    "instagram.com",
+    "linkedin.com",
+    "twitter.com",
+    "x.com",
+    "youtube.com",
+    "tiktok.com",
+    "whatsapp.com",
+    "telegram.org",
+    "wa.me",
+    "t.me",
+}
+
 JOB_RELATED_KEYWORDS = {
     "hiring", "recruit", "recruiter", "recruitment", "salary", "interview",
     "applicant", "employer", "employee", "career", "vacancy", "cv", "resume",
@@ -106,3 +120,8 @@ def registered_domain(host: str) -> str:
 def is_known_ats_domain(domain: str) -> bool:
     root = registered_domain(domain)
     return root in KNOWN_ATS_DOMAINS
+
+
+def is_known_social_platform_domain(domain: str) -> bool:
+    root = registered_domain(domain)
+    return root in KNOWN_SOCIAL_PLATFORM_DOMAINS
