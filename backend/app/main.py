@@ -45,7 +45,13 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def startup() -> None:
-    initialize_database()
+    try:
+        initialize_database()
+    except Exception as exc:
+        # Don't let a missing/misconfigured Postgres integration take the whole
+        # app down -- history storage will raise on its own when actually used,
+        # but /api/health and other non-DB endpoints should still work.
+        print(f"Warning: database initialization failed at startup: {exc}")
 
 
 @app.get("/api/health")
@@ -160,19 +166,24 @@ async def analyze(
             "Do not share passport, Emirates ID, bank details, or OTPs until the employer is verified.",
         ],
     }
-    save_analysis(
-        {
-            "id": str(uuid4()),
-            "createdAt": datetime.now(timezone.utc).isoformat(),
-            "label": build_history_label(text, job_url, uploaded_files),
-            "input": {
-                "text": analysis_text,
-                "linkUrl": job_url,
-                "files": uploaded_files,
-            },
-            "result": result,
-        }
-    )
+    try:
+        save_analysis(
+            {
+                "id": str(uuid4()),
+                "createdAt": datetime.now(timezone.utc).isoformat(),
+                "label": build_history_label(text, job_url, uploaded_files),
+                "input": {
+                    "text": analysis_text,
+                    "linkUrl": job_url,
+                    "files": uploaded_files,
+                },
+                "result": result,
+            }
+        )
+    except Exception as exc:
+        # A missing/misconfigured Postgres integration shouldn't block returning
+        # an analysis result the user already waited for -- just skip saving it.
+        print(f"Warning: failed to save analysis to history: {exc}")
     return result
 
 
