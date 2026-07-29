@@ -73,8 +73,7 @@ class TrustRadarScoringTests(unittest.TestCase):
 
     def test_named_role_with_no_other_substance_is_flagged(self):
         score, findings = pattern_check(
-            "hey how are you, you are shortlisted for senior developer role in hcl. "
-            "I am scheduling interview tomorrow"
+            "You have been shortlisted for the senior developer role. Interview is scheduled tomorrow."
         )
         ids = {finding["id"] for finding in findings}
 
@@ -83,6 +82,19 @@ class TrustRadarScoringTests(unittest.TestCase):
         tier, tier_level = score_to_tier(score)
         self.assertEqual(tier_level, "medium")
         self.assertNotEqual(tier, "Lower risk")
+
+    def test_casual_greeting_plus_shortlist_claim_escalates_to_high_risk(self):
+        score, findings = pattern_check(
+            "hey how are you, you are shortlisted for senior developer role in hcl. "
+            "I am scheduling interview tomorrow"
+        )
+        ids = {finding["id"] for finding in findings}
+
+        self.assertIn("unsubstantiated_interview_claim", ids)
+        self.assertIn("casual_impersonation_pattern", ids)
+        tier, tier_level = score_to_tier(score)
+        self.assertEqual(tier_level, "high")
+        self.assertEqual(tier, "High risk")
 
     def test_negated_upfront_fee_is_not_flagged(self):
         score, findings = pattern_check(

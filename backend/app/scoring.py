@@ -126,6 +126,13 @@ CONTEXTUAL_PATTERNS = [
         "score": 25,
         "explain": "This message claims you're shortlisted or invited to interview but gives no salary, requirements, application process, or contact link -- naming a job title alone doesn't make a claim like this verifiable.",
     },
+    {
+        "id": "casual_impersonation_pattern",
+        "label": "Casual tone impersonating a known employer",
+        "severity": "high",
+        "score": 20,
+        "explain": "A casual, personal greeting ('hey, how are you') combined with an unverifiable shortlist/interview claim is a common template for impersonating real, well-known employers over WhatsApp or SMS -- the recognizable company name does the trust-building instead of any actual evidence.",
+    },
 ]
 
 INSTANT_OFFER_PATTERN = re.compile(
@@ -134,6 +141,7 @@ INSTANT_OFFER_PATTERN = re.compile(
     r"|\bcongratulations,?\s+you\s+(got|have)\s+(the\s+)?(job|offer)\b",
     re.IGNORECASE,
 )
+CASUAL_GREETING_PATTERN = re.compile(r"\b(hey|hi|hello)\b[^.!?\n]{0,20}\bhow are you\b", re.IGNORECASE)
 PROCESS_TERMS = {
     "interview", "apply", "application", "resume", "cv", "process",
     "assessment", "test", "screening",
@@ -264,7 +272,10 @@ def contextual_check(text: str) -> tuple[int, list[dict[str, Any]]]:
     # Only applies to the complementary case: a role WAS named (so the
     # role-absent checks above didn't fire) but nothing else here is
     # verifiable -- naming a job title alone doesn't establish authenticity.
-    if mentions_interview and not no_role_identified and not has_substantiation and not has_contact_signal:
+    is_unsubstantiated_claim = (
+        mentions_interview and not no_role_identified and not has_substantiation and not has_contact_signal
+    )
+    if is_unsubstantiated_claim:
         pattern = CONTEXTUAL_PATTERNS[4]
         score += pattern["score"]
         findings.append(
@@ -277,6 +288,23 @@ def contextual_check(text: str) -> tuple[int, list[dict[str, Any]]]:
                 "matches": 1,
             }
         )
+
+        # Stacks on top of the check above: a casual personal greeting plus an
+        # unverifiable shortlist/interview claim is a specific, recognizable
+        # impersonation template, not just generic vagueness -- escalate it.
+        if CASUAL_GREETING_PATTERN.search(text):
+            pattern = CONTEXTUAL_PATTERNS[5]
+            score += pattern["score"]
+            findings.append(
+                {
+                    "id": pattern["id"],
+                    "label": pattern["label"],
+                    "severity": pattern["severity"],
+                    "score": pattern["score"],
+                    "explanation": pattern["explain"],
+                    "matches": 1,
+                }
+            )
 
     return score, findings
 
