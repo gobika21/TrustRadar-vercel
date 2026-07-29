@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { Analytics } from "@vercel/analytics/react";
 import { AnalyzerForm } from "./components/AnalyzerForm";
 import { AppHeader } from "./components/AppHeader";
 import { HistoryPanel } from "./components/HistoryPanel";
@@ -167,6 +168,7 @@ function App() {
 createRoot(document.getElementById("root")).render(
   <ThemeProvider>
     <App />
+    <Analytics />
   </ThemeProvider>,
 );
 
