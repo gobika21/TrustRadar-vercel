@@ -71,6 +71,19 @@ class TrustRadarScoringTests(unittest.TestCase):
 
         self.assertNotIn("insufficient_verifiable_detail", ids)
 
+    def test_named_role_with_no_other_substance_is_flagged(self):
+        score, findings = pattern_check(
+            "hey how are you, you are shortlisted for senior developer role in hcl. "
+            "I am scheduling interview tomorrow"
+        )
+        ids = {finding["id"] for finding in findings}
+
+        self.assertIn("unsubstantiated_interview_claim", ids)
+        self.assertNotIn("missing_role", ids)
+        tier, tier_level = score_to_tier(score)
+        self.assertEqual(tier_level, "medium")
+        self.assertNotEqual(tier, "Lower risk")
+
     def test_negated_upfront_fee_is_not_flagged(self):
         score, findings = pattern_check(
             "We are pleased to offer you a position. Please note this role requires no upfront payment."

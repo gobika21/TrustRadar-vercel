@@ -4,7 +4,7 @@ import re
 from typing import Any
 
 from app.models import Evidence
-from app.text_utils import ROLE_TITLE_TERMS, extract_emails, extract_urls
+from app.text_utils import REQUIREMENT_TERMS, ROLE_TITLE_TERMS, extract_emails, extract_urls
 
 
 SCAM_PATTERNS = [
@@ -119,6 +119,13 @@ CONTEXTUAL_PATTERNS = [
         "score": 25,
         "explain": "This message announces a job offer or selection without any interview, application, or hiring process mentioned -- legitimate employers essentially always have some verifiable process before extending an offer.",
     },
+    {
+        "id": "unsubstantiated_interview_claim",
+        "label": "Interview/shortlist claim with no substance",
+        "severity": "medium",
+        "score": 25,
+        "explain": "This message claims you're shortlisted or invited to interview but gives no salary, requirements, application process, or contact link -- naming a job title alone doesn't make a claim like this verifiable.",
+    },
 ]
 
 INSTANT_OFFER_PATTERN = re.compile(
@@ -131,6 +138,8 @@ PROCESS_TERMS = {
     "interview", "apply", "application", "resume", "cv", "process",
     "assessment", "test", "screening",
 }
+
+SUBSTANTIATION_TERMS = REQUIREMENT_TERMS | {"salary", "compensation", "benefits", "apply", "application"}
 
 CONTEXTUAL_PATTERN_IDS = {pattern["id"] for pattern in CONTEXTUAL_PATTERNS}
 STRONG_SCAM_PATTERN_IDS = {
@@ -238,6 +247,25 @@ def contextual_check(text: str) -> tuple[int, list[dict[str, Any]]]:
     mentions_process = any(term in lowered for term in PROCESS_TERMS)
     if mentions_instant_offer and not mentions_process:
         pattern = CONTEXTUAL_PATTERNS[3]
+        score += pattern["score"]
+        findings.append(
+            {
+                "id": pattern["id"],
+                "label": pattern["label"],
+                "severity": pattern["severity"],
+                "score": pattern["score"],
+                "explanation": pattern["explain"],
+                "matches": 1,
+            }
+        )
+
+    has_substantiation = any(term in lowered for term in SUBSTANTIATION_TERMS)
+    has_contact_signal = bool(extract_emails(text)) or bool(extract_urls(text))
+    # Only applies to the complementary case: a role WAS named (so the
+    # role-absent checks above didn't fire) but nothing else here is
+    # verifiable -- naming a job title alone doesn't establish authenticity.
+    if mentions_interview and not no_role_identified and not has_substantiation and not has_contact_signal:
+        pattern = CONTEXTUAL_PATTERNS[4]
         score += pattern["score"]
         findings.append(
             {
