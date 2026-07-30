@@ -1,9 +1,10 @@
 import unittest
 from unittest.mock import patch
 
-from app.agents.dispatcher import dispatch_jd_check, dispatch_text_classification
+from app.agents.dispatcher import dispatch_extraction, dispatch_jd_check, dispatch_text_classification
 from app.agents.safety import redact_pii, wrap_untrusted
 from app.agents.skills.classifier import classify_scam_intent
+from app.agents.skills.extractor import extract_job_fields
 from app.agents.skills.jd_analyzer import analyze_jd
 from app.agents.skills.search_synthesis import judge_search_relevance
 from app.agents.skills.vision_ocr import extract_text_from_image
@@ -97,6 +98,91 @@ class ClassifierTests(unittest.IsolatedAsyncioTestCase):
             findings = await classify_scam_intent("Some text.")
         self.assertEqual(findings, [])
 
+    async def test_extracted_facts_are_included_in_the_prompt(self):
+        captured = {}
+
+        class CapturingMessages:
+            async def create(self, **kwargs):
+                captured["content"] = kwargs["messages"][0]["content"]
+                return FakeResponse('{"findings": []}')
+
+        class CapturingClient:
+            messages = CapturingMessages()
+
+        extracted = {
+            "company": "HCL",
+            "role": "Senior Developer",
+            "salary": None,
+            "requirements": [],
+            "contact_email": None,
+            "contact_url": None,
+            "application_reference": None,
+            "interview_datetime": "tomorrow",
+            "greeting_tone": "casual",
+            "urgency_language": False,
+            "process_mentioned": False,
+        }
+        with patch("app.agents.skills.classifier.get_client", return_value=CapturingClient()):
+            await classify_scam_intent("hey how are you, shortlisted for senior developer", extracted)
+
+        self.assertIn("Extracted facts", captured["content"])
+        self.assertIn("Company: HCL", captured["content"])
+        self.assertIn("Greeting tone: casual", captured["content"])
+
+
+class ExtractorTests(unittest.IsolatedAsyncioTestCase):
+    async def test_returns_none_when_agents_disabled(self):
+        with patch("app.agents.skills.extractor.get_client", return_value=None):
+            result = await extract_job_fields("We are hiring a Product Designer at Lumen Studio.")
+        self.assertIsNone(result)
+
+    async def test_returns_none_for_blank_text(self):
+        with patch("app.agents.skills.extractor.get_client", return_value=FakeClient("{}")):
+            result = await extract_job_fields("   ")
+        self.assertIsNone(result)
+
+    async def test_parses_and_normalizes_fields(self):
+        response_json = (
+            '{"company": "Lumen Studio", "role": "Product Designer", "salary": "$90k-$110k", '
+            '"requirements": ["Figma", "5+ years experience"], "contact_email": null, '
+            '"contact_url": "https://lumenstudio.com/careers", "application_reference": null, '
+            '"interview_datetime": null, "greeting_tone": "formal", "urgency_language": false, '
+            '"process_mentioned": true}'
+        )
+        with patch("app.agents.skills.extractor.get_client", return_value=FakeClient(response_json)):
+            result = await extract_job_fields(
+                "We are hiring a Product Designer at Lumen Studio. Apply at "
+                "https://lumenstudio.com/careers. Requires Figma and 5+ years experience."
+            )
+        self.assertEqual(result["company"], "Lumen Studio")
+        self.assertEqual(result["role"], "Product Designer")
+        self.assertEqual(result["requirements"], ["Figma", "5+ years experience"])
+        self.assertEqual(result["greeting_tone"], "formal")
+        self.assertTrue(result["process_mentioned"])
+
+    async def test_invalid_tone_falls_back_to_neutral(self):
+        response_json = '{"greeting_tone": "sarcastic"}'
+        with patch("app.agents.skills.extractor.get_client", return_value=FakeClient(response_json)):
+            result = await extract_job_fields("Some text.")
+        self.assertEqual(result["greeting_tone"], "neutral")
+
+    async def test_malformed_json_returns_none(self):
+        with patch("app.agents.skills.extractor.get_client", return_value=FakeClient("not json")):
+            result = await extract_job_fields("Some text.")
+        self.assertIsNone(result)
+
+    async def test_client_exception_returns_none(self):
+        class RaisingMessages:
+            async def create(self, **kwargs):
+                raise RuntimeError("network error")
+
+        class RaisingClient:
+            messages = RaisingMessages()
+
+        with patch("app.agents.skills.extractor.get_client", return_value=RaisingClient()):
+            result = await extract_job_fields("Some text.")
+        self.assertIsNone(result)
+
 
 class VisionOcrTests(unittest.IsolatedAsyncioTestCase):
     async def test_returns_empty_when_agents_disabled(self):
@@ -149,6 +235,16 @@ class DispatcherTests(unittest.IsolatedAsyncioTestCase):
         with patch("app.agents.dispatcher.agents_enabled", return_value=True):
             findings = await dispatch_text_classification("   ")
         self.assertEqual(findings, [])
+
+    async def test_dispatch_extraction_returns_none_when_agents_disabled(self):
+        with patch("app.agents.dispatcher.agents_enabled", return_value=False):
+            result = await dispatch_extraction("Pay a fee now.")
+        self.assertIsNone(result)
+
+    async def test_dispatch_extraction_returns_none_for_blank_text(self):
+        with patch("app.agents.dispatcher.agents_enabled", return_value=True):
+            result = await dispatch_extraction("   ")
+        self.assertIsNone(result)
 
     async def test_dispatch_jd_check_returns_none_when_agents_disabled(self):
         with patch("app.agents.dispatcher.agents_enabled", return_value=False):
