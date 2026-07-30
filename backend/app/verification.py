@@ -37,7 +37,9 @@ BROWSER_HEADERS = {
 async def resolve_dns(domain: str) -> Evidence:
     METRICS["dns_lookups"] += 1
     try:
-        addresses = await asyncio.to_thread(socket.getaddrinfo, domain, None)
+        addresses = await asyncio.wait_for(
+            asyncio.to_thread(socket.getaddrinfo, domain, None), timeout=6.0
+        )
         ips = sorted({item[4][0] for item in addresses})[:4]
         if any(is_non_public_ip(ip) for ip in ips):
             return Evidence(
@@ -50,6 +52,10 @@ async def resolve_dns(domain: str) -> Evidence:
         return Evidence("DNS resolution", "found", f"{domain} resolves to {', '.join(ips)}", domain, "info")
     except socket.gaierror:
         return Evidence("DNS resolution", "not_found", f"{domain} does not resolve in DNS.", domain, "high")
+    except asyncio.TimeoutError:
+        return Evidence("DNS resolution", "failed", f"DNS lookup for {domain} timed out.", domain, "medium")
+    except OSError as exc:
+        return Evidence("DNS resolution", "failed", f"DNS lookup failed: {exc.__class__.__name__}", domain, "medium")
 
 
 def is_non_public_ip(address: str) -> bool:

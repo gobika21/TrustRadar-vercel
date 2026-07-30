@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import traceback
 from datetime import datetime, timezone
 from time import perf_counter
 from typing import Any
@@ -148,43 +149,54 @@ async def analyze(
         assert_job_url_accessible(job_url, live_evidence)
         total_score = min(100, pattern_score + evidence_score(live_evidence))
         tier, tier_level = score_to_tier(total_score)
+
+        summary = "No strong scam indicators were found in the available evidence. Verify the employer before sharing personal information."
+        if tier_level in {"critical", "high"}:
+            summary = "Multiple risk signals need independent verification before you reply, pay, or share identity documents."
+        elif tier_level == "medium":
+            summary = "Some signals require follow-up before you trust the posting or recruiter."
+
+        entry_id = str(uuid4())
+        result = {
+            "id": entry_id,
+            "tier": tier,
+            "tier_level": tier_level,
+            "score": total_score,
+            "summary": summary,
+            "recommendation": build_recommendation(tier_level),
+            "agent_workflow": build_agent_workflow(analysis_text, submitted_urls, findings, live_evidence),
+            "usage": build_usage_snapshot(usage_before),
+            "pattern_findings": findings,
+            "live_evidence": [evidence_to_payload(item) for item in live_evidence],
+            "uploaded_files": uploaded_files,
+            "extracted": {
+                "urls": extract_urls(analysis_text) + submitted_urls,
+                "emails": extract_emails(analysis_text),
+            },
+            "extracted_fields": extracted_fields,
+            "recommendations": [
+                "Do not pay fees or deposits for interviews, visas, training, or equipment.",
+                "Confirm the recruiter through the company website or an official company email domain.",
+                "Search the company and recruiter name with terms such as scam, fraud, complaint, and fake job.",
+                "Do not share passport, Emirates ID, bank details, or OTPs until the employer is verified.",
+            ],
+        }
+    except HTTPException:
+        raise
     except Exception:
         METRICS["analysis_errors"] += 1
-        raise
+        # An unhandled exception here is caught by Starlette's error handler
+        # *outside* CORSMiddleware, so the response has no CORS headers and the
+        # browser reports an opaque "Failed to fetch" with the real cause hidden.
+        # Log the full traceback (visible in the platform's function logs) and
+        # raise a normal HTTPException instead, which keeps CORS headers intact.
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail="Something went wrong while analyzing this submission. Please try again.",
+        )
     finally:
         METRICS["total_analysis_ms"] += (perf_counter() - started_at) * 1000
-
-    summary = "No strong scam indicators were found in the available evidence. Verify the employer before sharing personal information."
-    if tier_level in {"critical", "high"}:
-        summary = "Multiple risk signals need independent verification before you reply, pay, or share identity documents."
-    elif tier_level == "medium":
-        summary = "Some signals require follow-up before you trust the posting or recruiter."
-
-    entry_id = str(uuid4())
-    result = {
-        "id": entry_id,
-        "tier": tier,
-        "tier_level": tier_level,
-        "score": total_score,
-        "summary": summary,
-        "recommendation": build_recommendation(tier_level),
-        "agent_workflow": build_agent_workflow(analysis_text, submitted_urls, findings, live_evidence),
-        "usage": build_usage_snapshot(usage_before),
-        "pattern_findings": findings,
-        "live_evidence": [evidence_to_payload(item) for item in live_evidence],
-        "uploaded_files": uploaded_files,
-        "extracted": {
-            "urls": extract_urls(analysis_text) + submitted_urls,
-            "emails": extract_emails(analysis_text),
-        },
-        "extracted_fields": extracted_fields,
-        "recommendations": [
-            "Do not pay fees or deposits for interviews, visas, training, or equipment.",
-            "Confirm the recruiter through the company website or an official company email domain.",
-            "Search the company and recruiter name with terms such as scam, fraud, complaint, and fake job.",
-            "Do not share passport, Emirates ID, bank details, or OTPs until the employer is verified.",
-        ],
-    }
     try:
         save_analysis(
             {
