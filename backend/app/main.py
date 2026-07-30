@@ -6,7 +6,7 @@ from time import perf_counter
 from typing import Any
 from uuid import uuid4
 
-from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.agents.orchestrator import check_jd_validity, run_agentic_analysis
@@ -60,13 +60,29 @@ async def metrics() -> dict[str, Any]:
 
 
 @app.get("/api/history")
-async def history(limit: int = 20) -> list[dict[str, Any]]:
-    return list_analyses(max(1, min(limit, 100)))
+async def history(response: Response, limit: int = 20) -> list[dict[str, Any]]:
+    response.headers["Cache-Control"] = "no-store"
+    try:
+        return list_analyses(max(1, min(limit, 100)))
+    except Exception as exc:
+        # A missing/misconfigured Postgres integration, or a transient connection
+        # failure, shouldn't surface as an unhandled 500 -- that response loses its
+        # CORS headers (Starlette's error handler sits outside CORSMiddleware),
+        # which the browser then reports as an opaque "Failed to fetch" with no
+        # way to distinguish it from a real network outage. Degrade to an empty
+        # list instead so the frontend gets a normal, readable response.
+        print(f"Warning: failed to load history: {exc}")
+        return []
 
 
 @app.get("/api/history/{entry_id}")
-async def history_entry(entry_id: str) -> dict[str, Any]:
-    entry = get_analysis(entry_id)
+async def history_entry(entry_id: str, response: Response) -> dict[str, Any]:
+    response.headers["Cache-Control"] = "no-store"
+    try:
+        entry = get_analysis(entry_id)
+    except Exception as exc:
+        print(f"Warning: failed to load history entry {entry_id}: {exc}")
+        entry = None
     if entry is None:
         raise HTTPException(status_code=404, detail="Analysis history entry not found.")
     return entry
@@ -74,7 +90,10 @@ async def history_entry(entry_id: str) -> dict[str, Any]:
 
 @app.delete("/api/history")
 async def delete_history() -> dict[str, str]:
-    clear_analyses()
+    try:
+        clear_analyses()
+    except Exception as exc:
+        print(f"Warning: failed to clear history: {exc}")
     return {"status": "cleared"}
 
 
@@ -115,13 +134,15 @@ async def analyze(
     try:
         cached = get_cached_verification(analysis_text, submitted_urls)
         if cached is not None:
-            llm_findings, live_evidence = cached
+            llm_findings, extracted_fields, live_evidence = cached
         else:
-            llm_findings, live_evidence = await asyncio.gather(
+            (llm_findings, extracted_fields), live_evidence = await asyncio.gather(
                 run_agentic_analysis(analysis_text),
                 verify_live(analysis_text, submitted_urls),
             )
-            store_cached_verification(analysis_text, submitted_urls, (llm_findings, live_evidence))
+            store_cached_verification(
+                analysis_text, submitted_urls, (llm_findings, extracted_fields, live_evidence)
+            )
         findings = findings + llm_findings
         pattern_score += sum(item["score"] for item in llm_findings)
         assert_job_url_accessible(job_url, live_evidence)
@@ -139,7 +160,9 @@ async def analyze(
     elif tier_level == "medium":
         summary = "Some signals require follow-up before you trust the posting or recruiter."
 
+    entry_id = str(uuid4())
     result = {
+        "id": entry_id,
         "tier": tier,
         "tier_level": tier_level,
         "score": total_score,
@@ -154,6 +177,7 @@ async def analyze(
             "urls": extract_urls(analysis_text) + submitted_urls,
             "emails": extract_emails(analysis_text),
         },
+        "extracted_fields": extracted_fields,
         "recommendations": [
             "Do not pay fees or deposits for interviews, visas, training, or equipment.",
             "Confirm the recruiter through the company website or an official company email domain.",
@@ -164,7 +188,7 @@ async def analyze(
     try:
         save_analysis(
             {
-                "id": str(uuid4()),
+                "id": entry_id,
                 "createdAt": datetime.now(timezone.utc).isoformat(),
                 "label": build_history_label(text, job_url, uploaded_files),
                 "input": {

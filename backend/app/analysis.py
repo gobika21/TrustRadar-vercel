@@ -43,8 +43,15 @@ def extract_evidence_links(item: Evidence) -> list[dict[str, str]]:
     if item.source.startswith(("http://", "https://")):
         links.append({"label": item.label, "url": item.source})
     if item.label == "Web search":
-        for title, url in re.findall(r"([^|()]+?)\s*\((https?://[^)]+)\)", item.detail):
-            links.append({"label": title.strip()[:90], "url": url.strip()})
+        top_results = item.detail.split("Top results: ", 1)[-1]
+        top_results = top_results.split(" | LLM assessment:", 1)[0]
+        for entry in top_results.split(" | "):
+            match = re.match(r"^(.*)\s\((https?://[^)]+)\)$", entry.strip())
+            if not match:
+                continue
+            title, url = match.group(1).strip(), match.group(2).strip()
+            if title and url:
+                links.append({"label": title[:90], "url": url})
     return links[:4]
 
 
