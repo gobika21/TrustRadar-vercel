@@ -232,20 +232,6 @@ a {
   transform: translateY(-1px);
 }
 
-.status-pill {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 8px 14px;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--green) 30%, var(--line));
-  background: color-mix(in srgb, var(--green) 12%, var(--panel-solid));
-  color: var(--green-strong);
-  font-size: 0.78rem;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
 /* ---------------------------------------------------------------- */
 /* Shared card / section primitives                                  */
 /* ---------------------------------------------------------------- */
@@ -526,6 +512,16 @@ a {
 .history-item:hover {
   border-color: color-mix(in srgb, var(--brand) 40%, var(--line));
   transform: translateY(-1px);
+}
+
+.history-item.is-selected {
+  border-color: color-mix(in srgb, var(--brand) 55%, var(--line));
+  background: color-mix(in srgb, var(--brand) 8%, var(--field));
+  box-shadow: inset 3px 0 0 var(--brand);
+}
+
+.history-item.is-selected:hover {
+  transform: none;
 }
 
 .history-item svg {
@@ -943,6 +939,96 @@ a {
   border-color: color-mix(in srgb, var(--brand) 45%, var(--line));
 }
 
+.evidence-links-label {
+  width: 100%;
+  font-size: 0.68rem;
+  font-weight: 750;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted-2);
+  margin-bottom: -2px;
+}
+
+/* Key signals summary */
+
+.key-signals {
+  padding-bottom: 18px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--line);
+}
+
+.signal-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.signal-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: var(--ink);
+}
+
+.signal-list li > svg {
+  flex: none;
+  margin-top: 2px;
+}
+
+.signal-list li.critical,
+.signal-list li.high {
+  color: var(--red-strong);
+}
+
+.signal-list li.critical > svg,
+.signal-list li.high > svg {
+  color: var(--red-strong);
+}
+
+.signal-list li.medium {
+  color: var(--amber);
+}
+
+.signal-list li.medium > svg {
+  color: var(--amber);
+}
+
+.signal-list li.info,
+.signal-list li.positive {
+  color: var(--muted);
+}
+
+.signal-list li.info > svg,
+.signal-list li.positive > svg {
+  color: var(--green-strong);
+}
+
+/* Next steps */
+
+.next-steps {
+  margin-top: 6px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.next-steps-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0 0 0 18px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.next-steps-list li {
+  padding-left: 2px;
+}
+
 /* ---------------------------------------------------------------- */
 /* Error modal                                                       */
 /* ---------------------------------------------------------------- */
@@ -966,9 +1052,8 @@ a {
   width: min(440px, 100%);
   padding: 32px 28px 26px;
   border-radius: var(--radius-lg);
-  background: var(--panel-solid);
+  background: color-mix(in srgb, var(--tone) 5%, var(--panel-solid));
   border: 1px solid var(--line);
-  border-top: 3px solid var(--tone);
   box-shadow: var(--shadow-pop);
   text-align: center;
   display: grid;
@@ -1014,12 +1099,18 @@ a {
   border: 1px solid var(--line);
   background: var(--field);
   color: var(--muted);
-  transition: color 0.15s ease, border-color 0.15s ease;
+  outline: none;
+  transition: color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .error-modal-close:hover {
   color: var(--ink);
   border-color: color-mix(in srgb, var(--tone) 45%, var(--line));
+}
+
+.error-modal-close:focus-visible {
+  border-color: var(--tone);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--tone) 30%, transparent);
 }
 
 .error-modal-icon {
@@ -1052,8 +1143,18 @@ a {
   padding: 12px 26px;
   border: none;
   border-radius: var(--radius-md);
-  background: linear-gradient(120deg, #6d5ef4, #0e7490);
+  background: var(--tone-strong);
   color: #ffffff;
   font-weight: 700;
   font-size: 0.88rem;
+  outline: none;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.error-modal-action:hover {
+  transform: translateY(-1px);
+}
+
+.error-modal-action:focus-visible {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--tone) 35%, transparent);
 }

@@ -1,5 +1,5 @@
 import React from "react";
-import { ExternalLink, Globe, Radar, ShieldCheck, Sparkles } from "lucide-react";
+import { CheckCircle2, ExternalLink, Globe, Radar, ShieldAlert, ShieldCheck, Sparkles } from "lucide-react";
 import { severityLabel, tierClass } from "../utils/risk";
 
 const loadingSteps = [
@@ -15,6 +15,7 @@ export function ResultPanel({ result, loading, progress = 0 }) {
   if (!result) return <EmptyPanel />;
 
   const recommendation = result.recommendation || fallbackRecommendation(result);
+  const evidence = buildEvidenceList(result);
 
   return (
     <aside className={`result-panel verdict-panel ${tierClass(result.tier_level)}`}>
@@ -26,8 +27,69 @@ export function ResultPanel({ result, loading, progress = 0 }) {
         <ScoreGauge score={result.score} />
       </section>
 
-      <LiveVerification evidence={buildEvidenceList(result)} />
+      <KeySignals evidence={evidence} />
+      <LiveVerification evidence={evidence} />
+      <NextSteps recommendations={result.recommendations} />
     </aside>
+  );
+}
+
+function KeySignals({ evidence }) {
+  const signals = buildKeySignals(evidence);
+
+  return (
+    <section className="report-section key-signals">
+      <h3>What drove this result</h3>
+      <ul className="signal-list">
+        {signals.length ? (
+          signals.map((signal, index) => (
+            <li key={index} className={signal.severity}>
+              {signal.severity === "info" || signal.severity === "positive" ? (
+                <CheckCircle2 size={15} />
+              ) : (
+                <ShieldAlert size={15} />
+              )}
+              <span>{signal.text}</span>
+            </li>
+          ))
+        ) : (
+          <li className="info">
+            <CheckCircle2 size={15} />
+            <span>No notable scam signals were found in the text or evidence gathered.</span>
+          </li>
+        )}
+      </ul>
+    </section>
+  );
+}
+
+function buildKeySignals(evidence) {
+  const notable = evidence.filter((item) => item.severity && item.severity !== "info");
+  if (!notable.length) {
+    return [
+      {
+        severity: "positive",
+        text: "No scam-language patterns or negative public signals were found for this posting.",
+      },
+    ];
+  }
+  return notable.map((item) => ({
+    severity: item.severity,
+    text: item.takeaway || item.detail,
+  }));
+}
+
+function NextSteps({ recommendations }) {
+  if (!recommendations?.length) return null;
+  return (
+    <section className="report-section next-steps">
+      <h3>What to do next</h3>
+      <ul className="next-steps-list">
+        {recommendations.map((tip, index) => (
+          <li key={index}>{tip}</li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -144,9 +206,10 @@ function LiveVerification({ evidence }) {
                 <strong>{item.label}</strong>
                 <span className={item.severity}>{severityLabel(item.severity)}</span>
               </div>
-              <p>{item.detail}</p>
+              <p>{item.takeaway || item.detail}</p>
               {item.links?.length ? (
                 <div className="evidence-links">
+                  <span className="evidence-links-label">Sources</span>
                   {item.links.slice(0, 3).map((link) => (
                     <a href={link.url} target="_blank" rel="noreferrer" key={`${item.label}-${link.url}`}>
                       {link.label} <ExternalLink size={12} />
@@ -206,5 +269,25 @@ function buildEvidenceList(result) {
     source: "pattern",
     links: [],
   }));
-  return [...patternEvidence, ...(result.live_evidence || [])];
+  const liveEvidence = (result.live_evidence || []).map((item) => ({
+    ...item,
+    takeaway: item.label === "Web search" ? webSearchTakeaway(item) : undefined,
+  }));
+  return [...patternEvidence, ...liveEvidence];
+}
+
+function webSearchTakeaway(item) {
+  const llmMatch = item.detail?.match(/LLM assessment:\s*(.+)$/);
+  if (llmMatch) return llmMatch[1].trim();
+  if (item.status === "skipped" || item.status === "not_found" || item.status === "failed") {
+    return item.detail;
+  }
+  const resultCount = item.links?.length || 0;
+  if (item.severity === "high") {
+    return `Public search turned up ${resultCount || "several"} result(s) referencing scam, fraud, or impersonation warnings tied to this employer or domain.`;
+  }
+  if (item.severity === "medium") {
+    return `Public search found ${resultCount || "some"} result(s) worth a closer look, including reputation or complaint-related coverage.`;
+  }
+  return "No scam, fraud, or complaint-related coverage showed up in public search results.";
 }

@@ -1,7 +1,7 @@
 import React from "react";
 import { Clock3, Trash2 } from "lucide-react";
 
-export function HistoryPanel({ history, onSelect, onClear }) {
+export function HistoryPanel({ history, onSelect, onClear, selectedId }) {
   return (
     <section className="history-panel">
       <div className="section-title">
@@ -16,7 +16,13 @@ export function HistoryPanel({ history, onSelect, onClear }) {
       {history.length ? (
         <div className="history-list inline-history">
           {history.map((entry) => (
-            <button className="history-item" type="button" key={entry.id} onClick={() => onSelect(entry)}>
+            <button
+              className={`history-item${entry.id === selectedId ? " is-selected" : ""}`}
+              type="button"
+              key={entry.id}
+              aria-current={entry.id === selectedId}
+              onClick={() => onSelect(entry)}
+            >
               <Clock3 size={15} />
               <span>
                 <strong>{entry.label}</strong>

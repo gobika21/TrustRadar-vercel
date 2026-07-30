@@ -22,6 +22,24 @@ export function AnalyzerForm({
   showReset,
   onReset,
 }) {
+  function handlePaste(event) {
+    const items = Array.from(event.clipboardData?.items || []);
+    const pastedImages = items
+      .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+      .map((item) => item.getAsFile())
+      .filter(Boolean);
+
+    if (!pastedImages.length) return;
+
+    const namedImages = pastedImages.map((file, index) =>
+      file.name && file.name !== "image.png"
+        ? file
+        : new File([file], `pasted-screenshot-${Date.now()}-${index}.png`, { type: file.type }),
+    );
+
+    setFiles((currentFiles) => [...currentFiles, ...namedImages]);
+  }
+
   return (
     <form className="input-panel" onSubmit={onAnalyze}>
       <div className="panel-heading">
@@ -35,6 +53,7 @@ export function AnalyzerForm({
         <textarea
           value={text}
           onChange={(event) => setText(event.target.value)}
+          onPaste={handlePaste}
           placeholder="Add the job description, recruiter email, DM, or screenshot text."
         />
       </label>
@@ -46,12 +65,20 @@ export function AnalyzerForm({
 
       <label className="upload-box">
         <Upload size={18} />
-        <span>{files.length ? `${files.length} file attached` : "Attach screenshots or files"}</span>
+        <span>
+          {files.length
+            ? `${files.length} file${files.length === 1 ? "" : "s"} attached`
+            : "Attach screenshots or files, or paste an image (Ctrl/Cmd+V)"}
+        </span>
         <input
           type="file"
           multiple
           accept="image/*,.pdf,.txt"
-          onChange={(event) => setFiles(Array.from(event.target.files || []))}
+          onChange={(event) => {
+            const newFiles = Array.from(event.target.files || []);
+            if (newFiles.length) setFiles((currentFiles) => [...currentFiles, ...newFiles]);
+            event.target.value = "";
+          }}
         />
       </label>
 

@@ -22,6 +22,7 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [searchHistory, setSearchHistory] = useState(() => readStoredHistory());
+  const [selectedHistoryId, setSelectedHistoryId] = useState(null);
 
   const hasInput = useMemo(
     () => text.trim() || linkUrl.trim() || files.length,
@@ -51,11 +52,12 @@ function App() {
 
   async function loadHistory() {
     try {
-      const response = await fetch(HISTORY_URL);
+      const response = await fetch(HISTORY_URL, { cache: "no-store" });
       if (!response.ok) throw new Error(`History returned HTTP ${response.status}`);
       const backendHistory = await response.json();
       setSearchHistory((currentHistory) => persistHistory(mergeHistory(backendHistory, currentHistory)));
-    } catch {
+    } catch (err) {
+      console.error("Failed to load history from the server, falling back to local cache:", err);
       setSearchHistory(readStoredHistory());
     }
   }
@@ -87,6 +89,7 @@ function App() {
       }
       const analysisResult = await response.json();
       setResult(analysisResult);
+      setSelectedHistoryId(analysisResult.id || null);
       await loadHistory();
       clearInputs();
     } catch (err) {
@@ -116,6 +119,7 @@ function App() {
     setFiles([]);
     setResult(selectedEntry.result);
     setError(null);
+    setSelectedHistoryId(selectedEntry.id || entry.id);
   }
 
   function startNewSearch() {
@@ -124,6 +128,7 @@ function App() {
     setFiles([]);
     setResult(null);
     setError(null);
+    setSelectedHistoryId(null);
   }
 
   async function clearHistory() {
@@ -132,6 +137,7 @@ function App() {
     } finally {
       window.localStorage.removeItem(HISTORY_STORAGE_KEY);
       setSearchHistory([]);
+      setSelectedHistoryId(null);
     }
   }
 
@@ -156,7 +162,12 @@ function App() {
             showReset={Boolean(hasInput || result) && !loading}
             onReset={startNewSearch}
           />
-          <HistoryPanel history={searchHistory} onSelect={selectHistory} onClear={clearHistory} />
+          <HistoryPanel
+            history={searchHistory}
+            onSelect={selectHistory}
+            onClear={clearHistory}
+            selectedId={selectedHistoryId}
+          />
         </section>
 
         <ResultPanel result={result} loading={loading} progress={progress} />
