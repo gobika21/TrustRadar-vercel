@@ -318,16 +318,28 @@ def humanize_company_slug(value: str) -> str:
 
 
 async def verify_live(text: str, submitted_urls: list[str]) -> list[Evidence]:
-    all_urls = list(dict.fromkeys(submitted_urls + extract_urls(text)))
-    urls = [
-        url for url in all_urls
+    # Known social-platform domains (LinkedIn, Facebook, etc.) are only worth
+    # skipping when they show up incidentally in pasted text -- e.g. a footer
+    # "follow us" link, where checking the platform itself adds no signal. A
+    # URL the user explicitly submitted to be verified is the actual target
+    # of the check and must never be silently dropped, even if it happens to
+    # be a linkedin.com job posting -- that's one of the most common places a
+    # real job posting actually lives.
+    extracted_urls = [
+        url for url in extract_urls(text)
         if not (domain_from_url(url) and is_known_social_platform_domain(domain_from_url(url)))
     ]
+    urls = list(dict.fromkeys(submitted_urls + extracted_urls))
     emails = extract_emails(text)
+    submitted_domains = {domain_from_url(url) for url in submitted_urls if domain_from_url(url)}
     domains = sorted({domain_from_url(url) for url in urls if domain_from_url(url)})
     domains.extend(email.split("@", 1)[1].lower() for email in emails)
     domains = sorted(
-        {registered_domain(domain) for domain in domains if not is_known_social_platform_domain(domain)}
+        {
+            registered_domain(domain)
+            for domain in domains
+            if domain in submitted_domains or not is_known_social_platform_domain(domain)
+        }
     )
 
     timeout = httpx.Timeout(8.0, connect=4.0)
