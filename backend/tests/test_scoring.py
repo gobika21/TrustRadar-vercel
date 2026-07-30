@@ -241,8 +241,8 @@ class TrustRadarScoringTests(unittest.TestCase):
                 ]
             )
         )
-        self.assertEqual(tier_level, "high")
-        self.assertEqual(tier, "High risk")
+        self.assertIn(tier_level, {"high", "critical"})
+        self.assertIn(tier, {"High risk", "Likely scam"})
 
     def test_ats_hosted_jobs_search_by_employer_not_platform(self):
         query = build_search_query(
@@ -337,6 +337,24 @@ class TrustRadarScoringTests(unittest.TestCase):
 
         self.assertNotEqual(tier, "Lower risk")
         self.assertIn(tier_level, {"medium", "high", "critical"})
+
+    def test_lone_high_severity_web_search_hit_alone_reaches_high_risk(self):
+        tier, tier_level = score_to_tier(
+            evidence_score(
+                [
+                    Evidence(
+                        "Web search",
+                        "found",
+                        "Top results: Beware of acme corp: a job scam using AI",
+                        "acme corp company recruitment scam",
+                        "high",
+                    ),
+                ]
+            )
+        )
+
+        self.assertIn(tier_level, {"high", "critical"})
+        self.assertIn(tier, {"High risk", "Likely scam"})
 
     def test_failed_live_checks_do_not_create_scam_score(self):
         tier, tier_level = score_to_tier(

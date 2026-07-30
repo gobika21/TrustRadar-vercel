@@ -315,7 +315,7 @@ def evidence_score(evidence: list[Evidence]) -> int:
         if item.severity == "critical":
             score += 20
         elif item.severity == "high":
-            score += 30 if item.label == "Web search" else 16
+            score += 55 if item.label == "Web search" else 16
         elif item.severity == "medium":
             if item.status in {"failed", "skipped", "not_found"}:
                 continue
