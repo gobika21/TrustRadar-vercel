@@ -20,16 +20,33 @@ You may also be given a block of structured facts already extracted from the tex
 role, salary, contact info, application reference, tone). Use those facts to ground your \
 reasoning -- especially whether claims in the message are actually substantiated by them, not \
 just phrased confidently. A casual tone plus an unverifiable claim (no contact, no reference, \
-no real process) naming a real company is a stronger signal than either fact alone."""
+no real process) naming a real company is a stronger signal than either fact alone.
+You may also be told that this text was fetched directly from a job-hosting platform's public \
+listing page (e.g. LinkedIn), rather than pasted from an email or DM. For platform-hosted \
+listings, it is completely normal for the description text to have no direct contact email, \
+no application link, and no salary figure -- applicants apply and communicate entirely through \
+the platform itself, not through details embedded in the post. Do NOT flag "no contact info" \
+or "no salary listed" as a risk signal for platform-hosted listings; only flag it for messages \
+that read like a direct, personal recruiter contact (an email, DM, or WhatsApp message) where a \
+real recruiter would normally provide a way to respond."""
 
 
-async def classify_scam_intent(text: str, extracted: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+async def classify_scam_intent(
+    text: str, extracted: dict[str, Any] | None = None, sourced_from_platform: bool = False
+) -> list[dict[str, Any]]:
     client = get_client()
     if client is None or not text.strip():
         return []
 
     safe_text = redact_pii(text)[:6000]
     user_content = f"Job posting or message to review:\n\n{safe_text}"
+    if sourced_from_platform:
+        user_content += (
+            "\n\nNote: this text was fetched directly from a job-hosting platform's public "
+            "listing page, not pasted from an email or DM. Missing direct contact info or a "
+            "salary figure in the text is normal here -- do not flag it as suspicious for that "
+            "reason alone."
+        )
     if extracted:
         user_content += f"\n\nExtracted facts:\n{_format_extracted(extracted)}"
 

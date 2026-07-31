@@ -129,6 +129,40 @@ class ClassifierTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Company: HCL", captured["content"])
         self.assertIn("Greeting tone: casual", captured["content"])
 
+    async def test_sourced_from_platform_note_is_included_when_flagged(self):
+        captured = {}
+
+        class CapturingMessages:
+            async def create(self, **kwargs):
+                captured["content"] = kwargs["messages"][0]["content"]
+                return FakeResponse('{"findings": []}')
+
+        class CapturingClient:
+            messages = CapturingMessages()
+
+        with patch("app.agents.skills.classifier.get_client", return_value=CapturingClient()):
+            await classify_scam_intent(
+                "We are hiring a Senior Engineer.", extracted=None, sourced_from_platform=True
+            )
+
+        self.assertIn("fetched directly from a job-hosting platform", captured["content"])
+
+    async def test_sourced_from_platform_note_is_absent_by_default(self):
+        captured = {}
+
+        class CapturingMessages:
+            async def create(self, **kwargs):
+                captured["content"] = kwargs["messages"][0]["content"]
+                return FakeResponse('{"findings": []}')
+
+        class CapturingClient:
+            messages = CapturingMessages()
+
+        with patch("app.agents.skills.classifier.get_client", return_value=CapturingClient()):
+            await classify_scam_intent("We are hiring a Senior Engineer.")
+
+        self.assertNotIn("fetched directly from a job-hosting platform", captured["content"])
+
 
 class ExtractorTests(unittest.IsolatedAsyncioTestCase):
     async def test_returns_none_when_agents_disabled(self):

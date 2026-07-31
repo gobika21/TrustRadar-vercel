@@ -140,6 +140,42 @@ class AnalyzeEndpointTests(unittest.TestCase):
         response = self.client.post("/api/analyze", data={"job_url": "https://example.com/careers/12345"})
         self.assertEqual(response.status_code, 200)
 
+    def test_url_only_submission_is_flagged_as_platform_sourced(self):
+        with patch(
+            "app.main.fetch_submitted_job_descriptions",
+            new=AsyncMock(return_value="We are hiring a Senior Engineer at Acme."),
+        ), patch(
+            "app.main.run_agentic_analysis", new=AsyncMock(return_value=([], None))
+        ) as mock_run:
+            response = self.client.post("/api/analyze", data={"job_url": "https://example.com/careers/12345"})
+
+        self.assertEqual(response.status_code, 200)
+        mock_run.assert_awaited_once()
+        _, kwargs = mock_run.call_args
+        called_args = mock_run.call_args.args
+        self.assertTrue(called_args[1] if len(called_args) > 1 else kwargs.get("sourced_from_platform"))
+
+    def test_pasted_text_alongside_a_url_is_not_flagged_as_platform_sourced(self):
+        with patch(
+            "app.main.fetch_submitted_job_descriptions",
+            new=AsyncMock(return_value="We are hiring a Senior Engineer at Acme."),
+        ), patch(
+            "app.main.run_agentic_analysis", new=AsyncMock(return_value=([], None))
+        ) as mock_run:
+            response = self.client.post(
+                "/api/analyze",
+                data={
+                    "text": "hey, you're shortlisted, send your bank details to confirm",
+                    "job_url": "https://example.com/careers/12345",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        mock_run.assert_awaited_once()
+        called_args = mock_run.call_args.args
+        kwargs = mock_run.call_args.kwargs
+        self.assertFalse(called_args[1] if len(called_args) > 1 else kwargs.get("sourced_from_platform"))
+
     def test_history_round_trip_after_a_successful_analysis(self):
         analyze_response = self.client.post(
             "/api/analyze",

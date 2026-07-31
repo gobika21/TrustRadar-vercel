@@ -15,11 +15,11 @@ async def dispatch_extraction(text: str) -> dict[str, Any] | None:
 
 
 async def dispatch_text_classification(
-    text: str, extracted: dict[str, Any] | None = None
+    text: str, extracted: dict[str, Any] | None = None, sourced_from_platform: bool = False
 ) -> list[dict[str, Any]]:
     if not agents_enabled() or not text.strip():
         return []
-    return await classify_scam_intent(text, extracted)
+    return await classify_scam_intent(text, extracted, sourced_from_platform)
 
 
 async def dispatch_jd_check(text: str) -> dict[str, Any] | None:

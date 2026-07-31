@@ -122,6 +122,11 @@ async def analyze(
     fetched_description = await fetch_submitted_job_descriptions(submitted_urls)
     analysis_text = "\n\n".join(part for part in [text.strip(), uploaded_text, fetched_description] if part)
     METRICS["uploaded_files"] += len(uploaded_files)
+    # Only treat the submission as "platform-sourced" when the fetched listing
+    # is the *only* content -- if the user also pasted their own text or a
+    # screenshot alongside the link, that pasted content should still be
+    # judged with the normal cold-message expectations.
+    sourced_from_platform = bool(fetched_description.strip()) and not text.strip() and not uploaded_text.strip()
 
     pattern_score, findings = pattern_check(analysis_text)
     has_strong_scam_signal = any(finding["id"] in STRONG_SCAM_PATTERN_IDS for finding in findings)
@@ -145,7 +150,7 @@ async def analyze(
             llm_findings, extracted_fields, live_evidence = cached
         else:
             (llm_findings, extracted_fields), live_evidence = await asyncio.gather(
-                run_agentic_analysis(analysis_text),
+                run_agentic_analysis(analysis_text, sourced_from_platform),
                 verify_live(analysis_text, submitted_urls),
             )
             store_cached_verification(
