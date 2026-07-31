@@ -10,8 +10,14 @@ SYSTEM_PROMPT = """You judge how much risk web search results signal about a com
 being checked for a job/recruitment scam. Respond with ONLY a JSON object, no prose, no \
 markdown fences:
 {"severity": "high|medium|info", "reasoning": "One sentence."}
-Use "high" if a result specifically names or clearly refers to the target company or domain in \
-a scam-warning, fraud, or complaint context.
+Use "high" ONLY if a result is unambiguously about the exact target company or domain named in \
+the search query, in a scam-warning, fraud, or complaint context. Before using "high", check: is \
+this genuinely the same organization, or just a different company/page that happens to share a \
+word, an industry, or a similar-sounding name with the target? A result about "Orbital \
+Recruitment" is NOT evidence about a target company called "Orbitworks" or "Loft Orbital" just \
+because they share the word "orbital" -- these are different organizations, not the same one \
+under a variant spelling. If you are not confident the result is about the exact same entity, \
+use "medium" or "info" instead, and say so in your reasoning.
 Use "medium" if the results discuss job/recruitment scams, fraud, or fake-job warnings in \
 general -- even if they do not name the target company specifically. Generic scam-awareness \
 articles (FTC, BBB, "how to spot a fake job offer", etc.) count as "medium", not "info", \

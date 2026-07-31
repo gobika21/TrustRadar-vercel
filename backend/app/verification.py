@@ -308,6 +308,21 @@ def search_result_severity(query: str, result_text: str) -> str:
     return "info"
 
 
+def search_results_specifically_mention_target(query: str, result_text: str) -> bool:
+    """Whether any individual result entry genuinely matches the target.
+
+    Used as a guardrail on the LLM's own relevance judgment: the model can
+    occasionally claim a result is specifically about the target when it's
+    actually about a different, similarly-named organization (e.g. "Orbital
+    Recruitment" mistaken for a target called "Orbitworks"). If our own
+    token-matching found no entry that's actually about the target, the LLM
+    shouldn't be able to claim "high" specificity on its own say-so.
+    """
+    target_tokens, is_single_entity = domain_tokens_with_specificity(query)
+    result_entries = [entry.strip().lower() for entry in re.split(r"\s+\|\s+", result_text) if entry.strip()]
+    return any(_matches_target(entry, target_tokens, is_single_entity) for entry in result_entries)
+
+
 async def web_search(client: httpx.AsyncClient, query: str) -> Evidence:
     METRICS["web_searches"] += 1
     if not query.strip():
@@ -330,6 +345,13 @@ async def web_search(client: httpx.AsyncClient, query: str) -> Evidence:
             if llm_judgment:
                 severity = llm_judgment["severity"]
                 detail += f" | LLM assessment: {llm_judgment['reasoning']}"
+                if severity == "high" and not search_results_specifically_mention_target(query, detail):
+                    # The model claimed a result is specifically about the target,
+                    # but our own token-matching disagrees -- most likely a
+                    # different, similarly-named organization. Don't let a
+                    # single model call assert specificity our own check can't
+                    # verify; fall back to medium instead of trusting it blind.
+                    severity = "medium"
             return Evidence("Web search", "found", detail, query, severity)
         return Evidence("Web search", "not_found", "No search results were parsed for this query.", query, "medium")
     except httpx.HTTPError as exc:

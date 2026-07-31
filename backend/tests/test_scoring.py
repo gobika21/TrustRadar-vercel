@@ -16,7 +16,12 @@ from app.text_utils import (
     looks_like_valid_jd,
 )
 from app.uploads import decode_text_upload
-from app.verification import build_search_query, rdap_lookup, search_result_severity
+from app.verification import (
+    build_search_query,
+    rdap_lookup,
+    search_result_severity,
+    search_results_specifically_mention_target,
+)
 
 
 ALMUMTAJ_MESSAGE = """Hello Gobika Sekar,
@@ -217,6 +222,22 @@ class TrustRadarScoringTests(unittest.TestCase):
 
         self.assertEqual(
             search_result_severity("Orbitworks Loft Orbital recruitment scam", detail), "high"
+        )
+
+    def test_specifically_mention_target_guards_against_similarly_named_org(self):
+        # A different organization ("Orbital Recruitment") sharing one word
+        # with the target shouldn't count as the results being "about" it.
+        detail = "Top results: *IMPORTANT* Orbital Recruitment impersonation warning (https://example.com/unrelated)"
+
+        self.assertFalse(
+            search_results_specifically_mention_target("Orbitworks Loft Orbital recruitment scam", detail)
+        )
+
+    def test_specifically_mention_target_true_for_genuine_match(self):
+        detail = "Top results: Orbitworks Loft Orbital job scam alert (https://example.com/warning)"
+
+        self.assertTrue(
+            search_results_specifically_mention_target("Orbitworks Loft Orbital recruitment scam", detail)
         )
 
     def test_almumtaj_case_no_longer_scores_lower_risk(self):
