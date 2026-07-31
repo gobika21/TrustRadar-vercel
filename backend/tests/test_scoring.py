@@ -329,6 +329,29 @@ class TrustRadarScoringTests(unittest.TestCase):
         self.assertNotIn("Adventure", query)
         self.assertIn("Orbitworks", query)
 
+    def test_search_query_skips_job_board_furniture_before_about_the_job(self):
+        # Text pasted from a job board often starts with the board's own
+        # header, region tag, and the role title repeated -- none of that is
+        # the employer's name. The real company only shows up after the
+        # "About the job" section starts.
+        query = build_search_query(
+            "Discovered MENA Senior Full Stack Engineer About the job Murphy AI deploys "
+            "voice AI agents that help banks collect debt faster.",
+            [],
+            [],
+        )
+
+        self.assertNotIn("Discovered", query)
+        self.assertNotIn("MENA", query)
+        self.assertIn("Murphy", query)
+
+    def test_search_query_uses_full_text_when_no_heading_present(self):
+        query = build_search_query(
+            "Orbitworks is hiring a Senior Engineer for its Abu Dhabi team.", [], []
+        )
+
+        self.assertIn("Orbitworks", query)
+
     def test_generic_reputation_pages_are_not_high_without_scam_claims(self):
         detail = (
             "Top results: lever.co Reviews: Is this site a scam or legit? - Scam Detector "

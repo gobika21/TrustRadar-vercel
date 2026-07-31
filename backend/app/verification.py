@@ -363,7 +363,16 @@ GENERIC_LEAD_WORDS = {
     "are", "is", "in", "at", "on", "for", "with", "and", "or", "to", "a", "an",
     "us", "team", "role", "position", "job", "jobs", "hiring", "hi", "hello",
     "hey", "apply", "now", "why", "who", "what", "when", "how", "adventure",
+    "senior", "junior", "lead", "staff", "principal", "full", "part", "time",
+    "remote", "hybrid", "onsite", "intern", "internship", "entry", "level",
+    "stack", "engineer", "developer", "manager", "director", "analyst",
+    "associate", "specialist", "executive", "officer", "consultant",
+    "architect", "designer", "coordinator",
 }
+
+JOB_BODY_HEADING = re.compile(
+    r"\b(?:about the job|about us|job description|the role)\b\s*:?\s*", re.IGNORECASE
+)
 
 
 def build_search_query(text: str, urls: list[str], emails: list[str]) -> str:
@@ -400,7 +409,14 @@ def build_search_query(text: str, urls: list[str], emails: list[str]) -> str:
         company_name = normalize_company_name(lowercase_company_match.group(1))
         if company_name:
             return f"{company_name} recruitment scam"
-    words = re.findall(r"\b[A-Z][A-Za-z0-9&.-]{2,}\b", text)
+    # Prefer text after an "About the job" / "About us" heading if present --
+    # content before it is often page furniture (a job board's own header,
+    # region tags, the role title repeated) rather than the actual employer
+    # name, and grabbing the first few capitalized words verbatim from that
+    # furniture produces a nonsense query instead of the real company.
+    heading_match = list(JOB_BODY_HEADING.finditer(text))
+    body_text = text[heading_match[-1].end():] if heading_match else text
+    words = re.findall(r"\b[A-Z][A-Za-z0-9&.-]{2,}\b", body_text)
     words = [word for word in words if word.lower() not in GENERIC_LEAD_WORDS][:4]
     return " ".join(words + ["recruitment", "scam"]) if words else ""
 
