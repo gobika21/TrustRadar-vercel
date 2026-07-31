@@ -224,6 +224,28 @@ class TrustRadarScoringTests(unittest.TestCase):
             search_result_severity("Orbitworks Loft Orbital recruitment scam", detail), "high"
         )
 
+    def test_single_common_word_company_requires_its_acronym_too(self):
+        # "Murphy" alone is a common surname that could belong to a
+        # completely different company ("Murphy Group"). The query includes
+        # "Murphy AI" -- the acronym should be required alongside the surname,
+        # not just coincidentally present as a substring inside an unrelated
+        # word like "email".
+        query = build_search_query(
+            "About the job Murphy AI deploys voice AI agents that help banks collect debt.", [], []
+        )
+        self.assertEqual(query, "Murphy AI recruitment scam")
+
+        unrelated_detail = (
+            "Top results: Be cautious of recruitment email scams from Murphy Group "
+            "(https://www.linkedin.com/posts/murphygroup) | Recruitment Fraud Statement - "
+            "careers.murphygroup.com (https://careers.murphygroup.com/fraud)"
+        )
+        self.assertFalse(search_results_specifically_mention_target(query, unrelated_detail))
+        self.assertNotEqual(search_result_severity(query, unrelated_detail), "high")
+
+        genuine_detail = "Top results: Murphy AI job scam warning (https://example.com/warning)"
+        self.assertEqual(search_result_severity(query, genuine_detail), "high")
+
     def test_specifically_mention_target_guards_against_similarly_named_org(self):
         # A different organization ("Orbital Recruitment") sharing one word
         # with the target shouldn't count as the results being "about" it.

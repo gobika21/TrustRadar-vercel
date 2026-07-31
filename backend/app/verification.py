@@ -235,9 +235,18 @@ def domain_tokens_with_specificity(query: str) -> tuple[set[str], bool]:
             token.replace("-", "")
             for token in re.findall(r"[a-z0-9-]{4,}", plain_company_match.group(1))
         )
+    # A short all-caps acronym (e.g. "AI") is normally too generic to trust as
+    # its own identifier, but sitting next to a longer distinctive word it's a
+    # real part of the company's name -- keep it as an extra required token so
+    # a match has to include the fuller name, not just a common surname/word
+    # that could belong to a different company entirely ("Murphy AI" vs. an
+    # unrelated "Murphy Group").
+    acronym_tokens = {token.lower() for token in re.findall(r"\b[A-Z]{2,4}\b", query)}
     host_match = re.search(r"\b([a-z0-9-]+\.[a-z]{2,})\b", lowered)
     if not host_match:
-        return {token for token in query_tokens if len(token) >= 4}, len(query_tokens) <= 1
+        base_tokens = {token for token in query_tokens if len(token) >= 4}
+        is_single_entity = len(base_tokens) + len(acronym_tokens) <= 1
+        return base_tokens | acronym_tokens, is_single_entity
     stem = host_match.group(1).split(".", 1)[0]
     tokens = {stem, *query_tokens}
     if stem.endswith("llc"):
@@ -259,9 +268,20 @@ def _matches_target(entry: str, target_tokens: set[str], is_single_entity: bool)
     single domain/company identity, require at least two of them to show up
     together before treating an entry as being about the target.
     """
-    matched = {token for token in target_tokens if token in entry}
+    matched = {token for token in target_tokens if _token_present(token, entry)}
     required = 1 if is_single_entity or len(target_tokens) <= 1 else 2
     return len(matched) >= required
+
+
+def _token_present(token: str, entry: str) -> bool:
+    # Short tokens (mainly acronyms like "ai") need a real word boundary --
+    # plain substring matching would false-hit inside unrelated words like
+    # "email" or "detail". Longer tokens keep substring matching, which is
+    # needed for domain-embedded matches (e.g. "almumtaj" inside
+    # "almumtajllc.com", where there's no boundary between the two).
+    if len(token) <= 3:
+        return re.search(rf"\b{re.escape(token)}\b", entry) is not None
+    return token in entry
 
 
 def search_result_severity(query: str, result_text: str) -> str:
@@ -416,8 +436,8 @@ def build_search_query(text: str, urls: list[str], emails: list[str]) -> str:
     # furniture produces a nonsense query instead of the real company.
     heading_match = list(JOB_BODY_HEADING.finditer(text))
     body_text = text[heading_match[-1].end():] if heading_match else text
-    words = re.findall(r"\b[A-Z][A-Za-z0-9&.-]{2,}\b", body_text)
-    words = [word for word in words if word.lower() not in GENERIC_LEAD_WORDS][:4]
+    words = re.findall(r"\b[A-Z][A-Za-z0-9&.-]{2,}(?:\s+[A-Z]{2,4}\b)?", body_text)
+    words = [word for word in words if word.split()[0].lower() not in GENERIC_LEAD_WORDS][:4]
     return " ".join(words + ["recruitment", "scam"]) if words else ""
 
 
