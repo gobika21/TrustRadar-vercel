@@ -197,6 +197,28 @@ class TrustRadarScoringTests(unittest.TestCase):
 
         self.assertEqual(search_result_severity("almumtajllc.com company recruitment scam", detail), "high")
 
+    def test_generic_word_alone_does_not_falsely_implicate_target(self):
+        # "Orbital" alone is a generic word that could belong to an unrelated
+        # company (e.g. "Orbital Recruitment") -- a multi-word company-name
+        # query shouldn't flag a result as being about the target unless more
+        # than one of its distinctive words actually shows up together.
+        detail = (
+            "Top results: *IMPORTANT* Orbital Recruitment scam warning, unrelated agency "
+            "(https://example.com/unrelated) | Orbitworks Loft Orbital hiring page "
+            "(https://orbitworks.example/careers)"
+        )
+
+        self.assertEqual(
+            search_result_severity("Orbitworks Loft Orbital recruitment scam", detail), "info"
+        )
+
+    def test_multiple_distinctive_words_together_still_flags_high(self):
+        detail = "Top results: Orbitworks Loft Orbital job scam alert (https://example.com/warning)"
+
+        self.assertEqual(
+            search_result_severity("Orbitworks Loft Orbital recruitment scam", detail), "high"
+        )
+
     def test_almumtaj_case_no_longer_scores_lower_risk(self):
         pattern_score, _ = pattern_check(ALMUMTAJ_MESSAGE)
         live_score = evidence_score(

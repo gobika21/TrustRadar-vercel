@@ -210,6 +210,22 @@ def decode_ddg_href(href: str) -> str:
 
 
 def domain_tokens(query: str) -> set[str]:
+    tokens, _ = domain_tokens_with_specificity(query)
+    return tokens
+
+
+def domain_tokens_with_specificity(query: str) -> tuple[set[str], bool]:
+    """Return the target tokens plus whether they all identify a single entity.
+
+    A domain (or domain-derived company name) produces several *variant forms
+    of the same word* (stripping "llc", an "al-" prefix, etc.) so that any one
+    abbreviated mention still matches -- those variants should count as a
+    single, specific identifier. A multi-word company-name phrase pulled from
+    free text (no domain to anchor it) produces genuinely separate words
+    instead, where a single generic one (e.g. "building") can coincidentally
+    collide with an unrelated company -- those should require more than one
+    match before treating a result as being about the target.
+    """
     lowered = query.lower()
     company_match = re.search(r"\b([a-z0-9][a-z0-9-]{2,})\s+company\s+recruitment\s+scam\b", lowered)
     query_tokens = {company_match.group(1).replace("-", "")} if company_match else set()
@@ -221,7 +237,7 @@ def domain_tokens(query: str) -> set[str]:
         )
     host_match = re.search(r"\b([a-z0-9-]+\.[a-z]{2,})\b", lowered)
     if not host_match:
-        return {token for token in query_tokens if len(token) >= 4}
+        return {token for token in query_tokens if len(token) >= 4}, len(query_tokens) <= 1
     stem = host_match.group(1).split(".", 1)[0]
     tokens = {stem, *query_tokens}
     if stem.endswith("llc"):
@@ -230,7 +246,22 @@ def domain_tokens(query: str) -> set[str]:
         tokens.add(stem[2:])
     if stem.startswith("al") and stem.endswith("llc") and len(stem) > 7:
         tokens.add(stem[2:-3])
-    return {token for token in tokens if len(token) >= 4}
+    return {token for token in tokens if len(token) >= 4}, True
+
+
+def _matches_target(entry: str, target_tokens: set[str], is_single_entity: bool) -> bool:
+    """Require the entry to actually be about the target, not just share one word.
+
+    A single generic token pulled from a multi-word company-name phrase (e.g.
+    "building") can coincidentally appear in an unrelated company's name or
+    article -- misattributing that company's scam warning to the target being
+    checked. When the tokens come from a multi-word phrase rather than a
+    single domain/company identity, require at least two of them to show up
+    together before treating an entry as being about the target.
+    """
+    matched = {token for token in target_tokens if token in entry}
+    required = 1 if is_single_entity or len(target_tokens) <= 1 else 2
+    return len(matched) >= required
 
 
 def search_result_severity(query: str, result_text: str) -> str:
@@ -255,17 +286,18 @@ def search_result_severity(query: str, result_text: str) -> str:
         "are a scam",
     ]
     reputation_page_terms = ["scam or legit", "trustpilot", "scam-detector"]
-    target_tokens = domain_tokens(query)
+    target_tokens, is_single_entity = domain_tokens_with_specificity(query)
     result_entries = [entry.strip().lower() for entry in re.split(r"\s+\|\s+", result_text) if entry.strip()]
     target_negative_entries = [
         entry
         for entry in result_entries
-        if any(term in entry for term in negative_terms) and any(token in entry for token in target_tokens)
+        if any(term in entry for term in negative_terms) and _matches_target(entry, target_tokens, is_single_entity)
     ]
     target_reputation_entries = [
         entry
         for entry in result_entries
-        if any(term in entry for term in reputation_page_terms) and any(token in entry for token in target_tokens)
+        if any(term in entry for term in reputation_page_terms)
+        and _matches_target(entry, target_tokens, is_single_entity)
     ]
     if target_negative_entries:
         return "high"
