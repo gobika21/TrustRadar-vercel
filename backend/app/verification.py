@@ -304,12 +304,24 @@ async def web_search(client: httpx.AsyncClient, query: str) -> Evidence:
         return Evidence("Web search", "failed", f"Search failed: {exc.__class__.__name__}", query, "medium")
 
 
+GENERIC_LEAD_WORDS = {
+    "wanna", "join", "about", "we", "our", "the", "this", "as", "you", "your",
+    "are", "is", "in", "at", "on", "for", "with", "and", "or", "to", "a", "an",
+    "us", "team", "role", "position", "job", "jobs", "hiring", "hi", "hello",
+    "hey", "apply", "now", "why", "who", "what", "when", "how", "adventure",
+}
+
+
 def build_search_query(text: str, urls: list[str], emails: list[str]) -> str:
     employer_from_ats = employer_slug_from_ats_url(urls)
     if employer_from_ats:
         return f"{employer_from_ats} company recruitment scam"
     domains = [domain_from_url(url) for url in urls]
-    domains = [domain for domain in domains if domain and not is_known_ats_domain(domain)]
+    domains = [
+        domain
+        for domain in domains
+        if domain and not is_known_ats_domain(domain) and not is_known_social_platform_domain(domain)
+    ]
     email_domains = [email.split("@", 1)[1] for email in emails]
     candidates = domains + email_domains
     if candidates:
@@ -335,7 +347,8 @@ def build_search_query(text: str, urls: list[str], emails: list[str]) -> str:
         if company_name:
             return f"{company_name} recruitment scam"
     words = re.findall(r"\b[A-Z][A-Za-z0-9&.-]{2,}\b", text)
-    return " ".join(words[:4] + ["recruitment", "scam"]) if words else ""
+    words = [word for word in words if word.lower() not in GENERIC_LEAD_WORDS][:4]
+    return " ".join(words + ["recruitment", "scam"]) if words else ""
 
 
 def normalize_company_name(value: str) -> str:

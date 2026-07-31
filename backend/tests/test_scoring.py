@@ -264,6 +264,28 @@ class TrustRadarScoringTests(unittest.TestCase):
 
         self.assertEqual(query, "riministreet company recruitment scam")
 
+    def test_bare_linkedin_job_url_does_not_search_the_platform_itself(self):
+        query = build_search_query(
+            "Wanna Join the Adventure? Orbitworks is hiring a Senior Engineer.",
+            ["https://www.linkedin.com/jobs/view/4413661068/"],
+            [],
+        )
+
+        self.assertNotIn("linkedin", query.lower())
+        self.assertIn("Orbitworks", query)
+
+    def test_search_query_fallback_skips_generic_marketing_filler(self):
+        query = build_search_query(
+            "Wanna Join the Adventure? Orbitworks is hiring a Senior Engineer.",
+            [],
+            [],
+        )
+
+        self.assertNotIn("Wanna", query)
+        self.assertNotIn("Join", query)
+        self.assertNotIn("Adventure", query)
+        self.assertIn("Orbitworks", query)
+
     def test_generic_reputation_pages_are_not_high_without_scam_claims(self):
         detail = (
             "Top results: lever.co Reviews: Is this site a scam or legit? - Scam Detector "
