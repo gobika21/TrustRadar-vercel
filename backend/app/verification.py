@@ -284,27 +284,30 @@ def _token_present(token: str, entry: str) -> bool:
     return token in entry
 
 
+NEGATIVE_SCAM_TERMS = [
+    "job scam alert",
+    "job scam",
+    "scam using ai",
+    "dangerous scam",
+    "fake recruiting",
+    "fake recruiter",
+    "fake job",
+    "fake company",
+    "fraud",
+    "phishing",
+    "deception",
+    "recruitment trap",
+    "personal data theft",
+    "data theft warning",
+    "identity theft",
+    "beware of",
+    "are a scam",
+]
+
+
 def search_result_severity(query: str, result_text: str) -> str:
     lowered = result_text.lower()
-    negative_terms = [
-        "job scam alert",
-        "job scam",
-        "scam using ai",
-        "dangerous scam",
-        "fake recruiting",
-        "fake recruiter",
-        "fake job",
-        "fake company",
-        "fraud",
-        "phishing",
-        "deception",
-        "recruitment trap",
-        "personal data theft",
-        "data theft warning",
-        "identity theft",
-        "beware of",
-        "are a scam",
-    ]
+    negative_terms = NEGATIVE_SCAM_TERMS
     reputation_page_terms = ["scam or legit", "trustpilot", "scam-detector"]
     target_tokens, is_single_entity = domain_tokens_with_specificity(query)
     result_entries = [entry.strip().lower() for entry in re.split(r"\s+\|\s+", result_text) if entry.strip()]
@@ -328,19 +331,26 @@ def search_result_severity(query: str, result_text: str) -> str:
     return "info"
 
 
-def search_results_specifically_mention_target(query: str, result_text: str) -> bool:
-    """Whether any individual result entry genuinely matches the target.
+def search_results_have_genuine_negative_mention(query: str, result_text: str) -> bool:
+    """Whether the target is actually named alongside real negative language.
 
     Used as a guardrail on the LLM's own relevance judgment: the model can
-    occasionally claim a result is specifically about the target when it's
-    actually about a different, similarly-named organization (e.g. "Orbital
-    Recruitment" mistaken for a target called "Orbitworks"). If our own
-    token-matching found no entry that's actually about the target, the LLM
-    shouldn't be able to claim "high" specificity on its own say-so.
+    occasionally claim "high" severity when it shouldn't -- either because a
+    result is actually about a different, similarly-named organization (e.g.
+    "Orbital Recruitment" mistaken for a target called "Orbitworks"), or
+    because it misreads a generic reputation-checker page (Scamadviser, "is
+    this a scam or legit?", Trustpilot) as a real scam finding -- these tools
+    auto-generate a check page for nearly every domain, legitimate or not, so
+    that alone isn't evidence of anything. Requires the target to co-occur
+    with an actual negative/fraud term, not just any mention, before the LLM
+    is allowed to claim "high" severity.
     """
     target_tokens, is_single_entity = domain_tokens_with_specificity(query)
     result_entries = [entry.strip().lower() for entry in re.split(r"\s+\|\s+", result_text) if entry.strip()]
-    return any(_matches_target(entry, target_tokens, is_single_entity) for entry in result_entries)
+    return any(
+        any(term in entry for term in NEGATIVE_SCAM_TERMS) and _matches_target(entry, target_tokens, is_single_entity)
+        for entry in result_entries
+    )
 
 
 async def web_search(client: httpx.AsyncClient, query: str) -> Evidence:
@@ -365,12 +375,13 @@ async def web_search(client: httpx.AsyncClient, query: str) -> Evidence:
             if llm_judgment:
                 severity = llm_judgment["severity"]
                 detail += f" | LLM assessment: {llm_judgment['reasoning']}"
-                if severity == "high" and not search_results_specifically_mention_target(query, detail):
-                    # The model claimed a result is specifically about the target,
-                    # but our own token-matching disagrees -- most likely a
-                    # different, similarly-named organization. Don't let a
-                    # single model call assert specificity our own check can't
-                    # verify; fall back to medium instead of trusting it blind.
+                if severity == "high" and not search_results_have_genuine_negative_mention(query, detail):
+                    # The model claimed "high" -- either about a different,
+                    # similarly-named organization, or by misreading a generic
+                    # reputation-checker page (which mentions the target by
+                    # design, without confirming anything bad about it) as a
+                    # real scam finding. Don't let a single model call assert
+                    # severity our own check can't verify; fall back to medium.
                     severity = "medium"
             return Evidence("Web search", "found", detail, query, severity)
         return Evidence("Web search", "not_found", "No search results were parsed for this query.", query, "medium")

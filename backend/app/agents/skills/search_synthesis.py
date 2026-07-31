@@ -18,6 +18,14 @@ Recruitment" is NOT evidence about a target company called "Orbitworks" or "Loft
 because they share the word "orbital" -- these are different organizations, not the same one \
 under a variant spelling. If you are not confident the result is about the exact same entity, \
 use "medium" or "info" instead, and say so in your reasoning.
+A result from a generic reputation-checker site (Scamadviser, "is this a scam or legit?", \
+Trustpilot, scam-detector, etc.) is NOT by itself evidence the domain was flagged as fraudulent \
+-- these tools auto-generate a "check this site" page for nearly every domain on the internet, \
+legitimate or not, purely because someone searched for it. The mere existence of such a page is \
+not a scam report. Only use "high" for one of these if the result's own title or snippet states \
+an actual negative finding (e.g. "flagged as a scam", "low trust score", specific fraud reports) \
+-- not just that a checker page exists for the domain. If all you can tell is that a reputation \
+page exists, that's "medium" at most, not "high".
 Use "medium" if the results discuss job/recruitment scams, fraud, or fake-job warnings in \
 general -- even if they do not name the target company specifically. Generic scam-awareness \
 articles (FTC, BBB, "how to spot a fake job offer", etc.) count as "medium", not "info", \

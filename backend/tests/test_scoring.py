@@ -20,7 +20,7 @@ from app.verification import (
     build_search_query,
     rdap_lookup,
     search_result_severity,
-    search_results_specifically_mention_target,
+    search_results_have_genuine_negative_mention,
 )
 
 
@@ -240,26 +240,35 @@ class TrustRadarScoringTests(unittest.TestCase):
             "(https://www.linkedin.com/posts/murphygroup) | Recruitment Fraud Statement - "
             "careers.murphygroup.com (https://careers.murphygroup.com/fraud)"
         )
-        self.assertFalse(search_results_specifically_mention_target(query, unrelated_detail))
+        self.assertFalse(search_results_have_genuine_negative_mention(query, unrelated_detail))
         self.assertNotEqual(search_result_severity(query, unrelated_detail), "high")
 
         genuine_detail = "Top results: Murphy AI job scam warning (https://example.com/warning)"
         self.assertEqual(search_result_severity(query, genuine_detail), "high")
 
-    def test_specifically_mention_target_guards_against_similarly_named_org(self):
+    def test_genuine_negative_mention_guards_against_similarly_named_org(self):
         # A different organization ("Orbital Recruitment") sharing one word
-        # with the target shouldn't count as the results being "about" it.
+        # with the target shouldn't count as a genuine negative mention.
         detail = "Top results: *IMPORTANT* Orbital Recruitment impersonation warning (https://example.com/unrelated)"
 
         self.assertFalse(
-            search_results_specifically_mention_target("Orbitworks Loft Orbital recruitment scam", detail)
+            search_results_have_genuine_negative_mention("Orbitworks Loft Orbital recruitment scam", detail)
         )
 
-    def test_specifically_mention_target_true_for_genuine_match(self):
+    def test_genuine_negative_mention_ignores_reputation_checker_pages(self):
+        # A generic "is this a scam or legit?" reputation-checker page
+        # mentions the target by design -- that alone isn't a real finding.
+        detail = "Top results: riministreet.com Reviews: Is this site a scam or legit? - Scam Detector (https://example.com/check)"
+
+        self.assertFalse(
+            search_results_have_genuine_negative_mention("riministreet.com company recruitment scam", detail)
+        )
+
+    def test_genuine_negative_mention_true_for_genuine_match(self):
         detail = "Top results: Orbitworks Loft Orbital job scam alert (https://example.com/warning)"
 
         self.assertTrue(
-            search_results_specifically_mention_target("Orbitworks Loft Orbital recruitment scam", detail)
+            search_results_have_genuine_negative_mention("Orbitworks Loft Orbital recruitment scam", detail)
         )
 
     def test_almumtaj_case_no_longer_scores_lower_risk(self):
