@@ -66,6 +66,58 @@ def is_non_public_ip(address: str) -> bool:
     return ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_unspecified
 
 
+def extract_description_text(html: str) -> str | None:
+    """Pull the job-description body out of a fetched page, if present.
+
+    Public job pages (LinkedIn's guest job view included) commonly render the
+    full description server-side for SEO, even though the surrounding page
+    requires a login for the rest of the app -- so this text is readable via
+    a plain, unauthenticated fetch. Falls back to the meta description when
+    no known description container is found.
+    """
+    soup = BeautifulSoup(html[:300_000], "html.parser")
+    for selector in (".show-more-less-html__markup", "[class*='description__text']"):
+        markup = soup.select_one(selector)
+        if markup:
+            text = markup.get_text("\n", strip=True)
+            if text:
+                return text[:6000]
+    meta = soup.find("meta", attrs={"name": "description"}) or soup.find("meta", attrs={"property": "og:description"})
+    if meta and meta.get("content"):
+        content = meta["content"].strip()
+        if content:
+            return content[:6000]
+    return None
+
+
+async def fetch_job_description(client: httpx.AsyncClient, url: str) -> str | None:
+    try:
+        response = await client.get(url, follow_redirects=True, headers=BROWSER_HEADERS)
+        if response.status_code >= 400:
+            return None
+        if "text/html" not in response.headers.get("content-type", ""):
+            return None
+        return extract_description_text(response.text)
+    except Exception:
+        return None
+
+
+async def fetch_submitted_job_descriptions(urls: list[str]) -> str:
+    """Fetch the job description text behind explicitly submitted URLs.
+
+    Only applies to URLs the user submitted to be checked -- not ones
+    incidentally found in pasted text -- so this content can be merged into
+    the analysis text before scoring, letting a URL-only submission actually
+    get evaluated on its real content instead of just link metadata.
+    """
+    if not urls:
+        return ""
+    timeout = httpx.Timeout(8.0, connect=4.0)
+    async with httpx.AsyncClient(timeout=timeout, headers=BROWSER_HEADERS) as client:
+        descriptions = await asyncio.gather(*(fetch_job_description(client, url) for url in urls[:3]))
+    return "\n\n".join(text for text in descriptions if text)
+
+
 async def fetch_url(client: httpx.AsyncClient, url: str) -> Evidence:
     METRICS["url_fetches"] += 1
     try:

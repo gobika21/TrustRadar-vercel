@@ -25,7 +25,13 @@ from app.scoring import STRONG_SCAM_PATTERN_IDS, evidence_score, pattern_check, 
 from app.storage import clear_analyses, get_analysis, initialize_database, list_analyses, save_analysis
 from app.text_utils import domain_from_url, extract_emails, extract_urls, looks_like_valid_jd
 from app.uploads import read_uploads
-from app.verification import build_search_query, rdap_lookup, search_result_severity, verify_live
+from app.verification import (
+    build_search_query,
+    fetch_submitted_job_descriptions,
+    rdap_lookup,
+    search_result_severity,
+    verify_live,
+)
 
 
 app = FastAPI(title="TrustRadar API", version="0.1.0")
@@ -113,7 +119,8 @@ async def analyze(
     usage_before = METRICS.copy()
     submitted_urls = [url.strip() for url in [job_url, recruiter_url, company_url] if url.strip()]
     uploaded_text, uploaded_files = await read_uploads(files)
-    analysis_text = "\n\n".join(part for part in [text.strip(), uploaded_text] if part)
+    fetched_description = await fetch_submitted_job_descriptions(submitted_urls)
+    analysis_text = "\n\n".join(part for part in [text.strip(), uploaded_text, fetched_description] if part)
     METRICS["uploaded_files"] += len(uploaded_files)
 
     pattern_score, findings = pattern_check(analysis_text)
