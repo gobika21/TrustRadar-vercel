@@ -9,7 +9,7 @@ from app.agents.safety import wrap_untrusted
 SYSTEM_PROMPT = """You judge how much risk web search results signal about a company or domain \
 being checked for a job/recruitment scam. Respond with ONLY a JSON object, no prose, no \
 markdown fences:
-{"severity": "high|medium|info", "reasoning": "One sentence."}
+{"severity": "high|medium|info", "reasoning": "One complete sentence, under 220 characters."}
 Use "high" ONLY if a result is unambiguously about the exact target company or domain named in \
 the search query, in a scam-warning, fraud, or complaint context. Before using "high", check: is \
 this genuinely the same organization, or just a different company/page that happens to share a \
@@ -57,6 +57,13 @@ async def judge_search_relevance(query: str, result_text: str) -> dict[str, str]
         severity = payload.get("severity")
         if severity not in {"high", "medium", "info"}:
             return None
-        return {"severity": severity, "reasoning": str(payload.get("reasoning", ""))[:200]}
+        return {"severity": severity, "reasoning": _truncate_at_word_boundary(str(payload.get("reasoning", "")), 260)}
     except Exception:
         return None
+
+
+def _truncate_at_word_boundary(text: str, limit: int) -> str:
+    if len(text) <= limit:
+        return text
+    truncated = text[:limit].rsplit(" ", 1)[0]
+    return truncated.rstrip(".,;:") + "..."

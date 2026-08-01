@@ -1,3 +1,4 @@
+import json
 import unittest
 from unittest.mock import patch
 
@@ -257,6 +258,23 @@ class SearchSynthesisTests(unittest.IsolatedAsyncioTestCase):
         with patch("app.agents.skills.search_synthesis.get_client", return_value=FakeClient(response_json)):
             result = await judge_search_relevance("acme.com company recruitment scam", "some results")
         self.assertIsNone(result)
+
+    async def test_long_reasoning_truncates_at_word_boundary_not_mid_word(self):
+        long_reasoning = (
+            "Results include generic scam-awareness resources with no specific findings about "
+            "the target, plus a Facebook post from Orbital Recruitment, which is a different "
+            "company than the target and should not be treated as evidence about Orbitworks."
+        )
+        response_json = json.dumps({"severity": "medium", "reasoning": long_reasoning})
+        with patch("app.agents.skills.search_synthesis.get_client", return_value=FakeClient(response_json)):
+            result = await judge_search_relevance("orbitworks recruitment scam", "some results")
+
+        self.assertLessEqual(len(result["reasoning"]), 264)
+        # Every word in the truncated text should be a complete word from the
+        # original -- no truncated fragment like "tha" instead of "than".
+        words = result["reasoning"].rstrip(".").rstrip(".").split()
+        for word in words[:-1]:
+            self.assertIn(word, long_reasoning)
 
 
 class DispatcherTests(unittest.IsolatedAsyncioTestCase):
