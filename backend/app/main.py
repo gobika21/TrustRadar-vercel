@@ -20,16 +20,12 @@ from app.analysis import (
 from app.cache import get_cached_verification, store_cached_verification
 from app.rate_limit import enforce_rate_limit
 from app.metrics import METRICS, build_usage_snapshot, metrics_payload
-from app.models import Evidence
 from app.scoring import STRONG_SCAM_PATTERN_IDS, evidence_score, pattern_check, score_to_tier
 from app.storage import clear_analyses, get_analysis, initialize_database, list_analyses, save_analysis
 from app.text_utils import domain_from_url, extract_emails, extract_urls, looks_like_valid_jd
 from app.uploads import read_uploads
 from app.verification import (
-    build_search_query,
     fetch_submitted_job_descriptions,
-    rdap_lookup,
-    search_result_severity,
     verify_live,
 )
 
