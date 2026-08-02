@@ -20,5 +20,15 @@ def get_client():
     if _client is None:
         import anthropic
 
-        _client = anthropic.AsyncAnthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+        # Without an explicit timeout, the SDK's default is long enough that a
+        # slow/stuck call can outlive the serverless function's own execution
+        # limit -- the platform kills the function abruptly instead of this
+        # call failing within the app's own error handling, which already
+        # falls back to the regex/heuristic path on any exception here.
+        # max_retries is capped low for the same reason: the SDK's default
+        # retries would multiply worst-case latency for a fallback that's
+        # already available immediately.
+        _client = anthropic.AsyncAnthropic(
+            api_key=os.environ["ANTHROPIC_API_KEY"], timeout=10.0, max_retries=1
+        )
     return _client
