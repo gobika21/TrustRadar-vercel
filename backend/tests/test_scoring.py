@@ -1,7 +1,5 @@
 import json
 import unittest
-import tempfile
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from app.analysis import assert_job_url_accessible, build_recommendation, evidence_to_payload
@@ -18,7 +16,6 @@ from app.text_utils import (
 from app.uploads import decode_text_upload
 from app.verification import (
     build_search_query,
-    rdap_lookup,
     search_result_severity,
     search_results_have_genuine_negative_mention,
 )
@@ -625,7 +622,7 @@ class TrustRadarScoringTests(unittest.TestCase):
         self.assertEqual(entries[0]["label"], "example.com")
         self.assertEqual(entries[0]["result"]["score"], 0)
 
-    def test_clear_analyses_executes_delete(self):
+    def test_clear_analyses_soft_deletes_instead_of_destroying_rows(self):
         from app import storage
 
         cursor = MagicMock()
@@ -636,7 +633,9 @@ class TrustRadarScoringTests(unittest.TestCase):
         ):
             storage.clear_analyses()
 
-        cursor.execute.assert_any_call("DELETE FROM analyses")
+        executed_sql = [call.args[0] for call in cursor.execute.call_args_list]
+        self.assertTrue(any("UPDATE analyses SET deleted_at" in sql for sql in executed_sql))
+        self.assertFalse(any("DELETE FROM analyses" in sql for sql in executed_sql))
 
 
 if __name__ == "__main__":

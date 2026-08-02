@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import urlparse
 
@@ -74,10 +75,19 @@ def initialize_database() -> None:
             result_json TEXT NOT NULL,
             score INTEGER NOT NULL,
             tier TEXT NOT NULL,
-            tier_level TEXT NOT NULL
+            tier_level TEXT NOT NULL,
+            deleted_at TEXT
         )
         """
     )
+    # Deployments created before soft-delete existed won't have this column
+    # yet -- add it if missing. Best-effort: CREATE TABLE above already
+    # covers fresh databases, so a failure here (e.g. a test double that
+    # doesn't support this syntax) is safe to ignore.
+    try:
+        cursor.execute("ALTER TABLE analyses ADD COLUMN IF NOT EXISTS deleted_at TEXT")
+    except Exception:
+        pass
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_analyses_created_at ON analyses(created_at DESC)")
 
 
@@ -120,6 +130,7 @@ def list_analyses(limit: int = 20) -> list[dict[str, Any]]:
         """
         SELECT id, created_at, label, input_json, result_json
         FROM analyses
+        WHERE deleted_at IS NULL
         ORDER BY created_at DESC
         LIMIT %s
         """,
@@ -137,7 +148,7 @@ def get_analysis(entry_id: str) -> dict[str, Any] | None:
         """
         SELECT id, created_at, label, input_json, result_json
         FROM analyses
-        WHERE id = %s
+        WHERE id = %s AND deleted_at IS NULL
         """,
         (entry_id,),
     )
@@ -146,10 +157,19 @@ def get_analysis(entry_id: str) -> dict[str, Any] | None:
 
 
 def clear_analyses() -> None:
+    """Soft-delete every visible analysis rather than destroying the rows.
+
+    Clearing history from the UI shouldn't be an irreversible data-loss event
+    -- flag rows as deleted instead so they're hidden from the app but still
+    recoverable directly from the database if needed.
+    """
     initialize_database()
     connection = get_connection()
     cursor = connection.cursor()
-    cursor.execute("DELETE FROM analyses")
+    cursor.execute(
+        "UPDATE analyses SET deleted_at = %s WHERE deleted_at IS NULL",
+        (datetime.now(timezone.utc).isoformat(),),
+    )
 
 
 def row_to_entry(row: dict[str, Any]) -> dict[str, Any]:

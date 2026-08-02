@@ -137,7 +137,10 @@ class AnalyzeEndpointTests(unittest.TestCase):
         self.assertNotEqual(body["tier"], "Lower risk")
 
     def test_url_only_submission_bypasses_the_jd_gate(self):
-        response = self.client.post("/api/analyze", data={"job_url": "https://example.com/careers/12345"})
+        with patch(
+            "app.main.fetch_submitted_job_descriptions", new=AsyncMock(return_value="")
+        ):
+            response = self.client.post("/api/analyze", data={"job_url": "https://example.com/careers/12345"})
         self.assertEqual(response.status_code, 200)
 
     def test_url_only_submission_is_flagged_as_platform_sourced(self):
@@ -195,6 +198,14 @@ class AnalyzeEndpointTests(unittest.TestCase):
         clear_response = self.client.delete("/api/history")
         self.assertEqual(clear_response.status_code, 200)
         self.assertEqual(self.client.get("/api/history").json(), [])
+
+        # Clearing should soft-delete, not destroy -- the row must still be
+        # in the underlying table, just flagged and hidden from the API.
+        raw_cursor = self._fake_pg.cursor()
+        raw_cursor.execute("SELECT deleted_at FROM analyses")
+        rows = raw_cursor.fetchall()
+        self.assertEqual(len(rows), 1)
+        self.assertIsNotNone(rows[0][0])
 
 
 if __name__ == "__main__":
