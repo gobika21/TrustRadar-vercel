@@ -1,7 +1,8 @@
 import json
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
+import app.agents.client as client_module
 from app.agents.dispatcher import dispatch_extraction, dispatch_jd_check, dispatch_text_classification
 from app.agents.safety import redact_pii, wrap_untrusted
 from app.agents.skills.classifier import classify_scam_intent
@@ -357,6 +358,56 @@ class JdAnalyzerTests(unittest.IsolatedAsyncioTestCase):
         with patch("app.agents.skills.jd_analyzer.get_client", return_value=RaisingClient()):
             result = await analyze_jd("Some text.")
         self.assertIsNone(result)
+
+
+class AgentClientBudgetTests(unittest.TestCase):
+    def setUp(self):
+        client_module._client = None
+
+    def tearDown(self):
+        client_module._client = None
+
+    def test_get_client_returns_none_when_agents_disabled(self):
+        with patch.dict("os.environ", {}, clear=True):
+            self.assertIsNone(client_module.get_client())
+
+    def test_get_client_fails_open_when_redis_not_configured(self):
+        with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "fake-key"}), patch(
+            "app.kv.get_redis", return_value=None
+        ):
+            client = client_module.get_client()
+        self.assertIsNotNone(client)
+
+    def test_get_client_returns_none_once_daily_budget_is_exceeded(self):
+        fake_redis = MagicMock()
+        fake_redis.incr.return_value = 301  # over the default cap of 300
+
+        with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "fake-key"}), patch(
+            "app.kv.get_redis", return_value=fake_redis
+        ):
+            client = client_module.get_client()
+        self.assertIsNone(client)
+
+    def test_get_client_respects_a_lower_configured_budget(self):
+        fake_redis = MagicMock()
+        fake_redis.incr.return_value = 6
+
+        with patch.dict(
+            "os.environ", {"ANTHROPIC_API_KEY": "fake-key", "MAX_DAILY_AGENT_CALLS": "5"}
+        ), patch("app.kv.get_redis", return_value=fake_redis):
+            client = client_module.get_client()
+        self.assertIsNone(client)
+
+    def test_get_client_returns_client_when_under_budget(self):
+        fake_redis = MagicMock()
+        fake_redis.incr.return_value = 1
+
+        with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "fake-key"}), patch(
+            "app.kv.get_redis", return_value=fake_redis
+        ):
+            client = client_module.get_client()
+        self.assertIsNotNone(client)
+        fake_redis.expire.assert_called_once()
 
 
 if __name__ == "__main__":
