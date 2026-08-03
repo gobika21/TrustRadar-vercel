@@ -89,6 +89,19 @@ def initialize_database() -> None:
     except Exception:
         pass
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_analyses_created_at ON analyses(created_at DESC)")
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS blocked_attempts (
+            id TEXT PRIMARY KEY,
+            created_at TEXT NOT NULL,
+            reason TEXT NOT NULL,
+            text_snippet TEXT NOT NULL
+        )
+        """
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_blocked_attempts_created_at ON blocked_attempts(created_at DESC)"
+    )
 
 
 def save_analysis(entry: dict[str, Any]) -> None:
@@ -170,6 +183,46 @@ def clear_analyses() -> None:
         "UPDATE analyses SET deleted_at = %s WHERE deleted_at IS NULL",
         (datetime.now(timezone.utc).isoformat(),),
     )
+
+
+def record_blocked_attempt(entry: dict[str, Any]) -> None:
+    """Log a submission that consumed a Claude call but never reached scoring.
+
+    The JD-validity gate and the job-URL-accessibility check can both raise a
+    client error *after* a real agent call already ran, and neither path ever
+    reaches save_analysis -- so without this, those attempts cost money with
+    zero trace anywhere. Deliberately a separate, minimal table (not the
+    analyses history the app shows users): a rejected/incomplete submission
+    isn't a real analysis and shouldn't appear in "Recent checks" as if it
+    were one.
+    """
+    initialize_database()
+    connection = get_connection()
+    cursor = connection.cursor()
+    cursor.execute(
+        "INSERT INTO blocked_attempts (id, created_at, reason, text_snippet) VALUES (%s, %s, %s, %s)",
+        (entry["id"], entry["createdAt"], entry["reason"], entry["textSnippet"]),
+    )
+
+
+def list_blocked_attempts(limit: int = 50) -> list[dict[str, Any]]:
+    initialize_database()
+    connection = get_connection()
+    cursor = connection.cursor()
+    cursor.execute(
+        "SELECT id, created_at, reason, text_snippet FROM blocked_attempts ORDER BY created_at DESC LIMIT %s",
+        (limit,),
+    )
+    rows = _rows_to_dicts(cursor)
+    return [
+        {
+            "id": row["id"],
+            "createdAt": row["created_at"],
+            "reason": row["reason"],
+            "textSnippet": row["text_snippet"],
+        }
+        for row in rows
+    ]
 
 
 def row_to_entry(row: dict[str, Any]) -> dict[str, Any]:

@@ -66,6 +66,30 @@ class AnalyzeEndpointTests(unittest.TestCase):
         self.assertEqual(response.status_code, 422)
         self.assertIn("enough detail to review", response.json()["detail"])
 
+    def test_jd_gate_rejection_is_not_logged_when_no_agent_call_happened(self):
+        # check_jd_validity returns None when agents are disabled -- the
+        # heuristic fallback is free, so there's nothing worth logging.
+        with patch("app.main.record_blocked_attempt") as mock_record:
+            self.client.post(
+                "/api/analyze", data={"text": "Hello, you are invited for an interview tomorrow"}
+            )
+        mock_record.assert_not_called()
+
+    def test_jd_gate_rejection_is_logged_when_a_real_agent_call_happened(self):
+        with patch(
+            "app.main.check_jd_validity",
+            new=AsyncMock(return_value={"is_valid_jd": False, "missing": ["role"], "reason": "too vague"}),
+        ), patch("app.main.record_blocked_attempt") as mock_record:
+            response = self.client.post(
+                "/api/analyze", data={"text": "Hello, you are invited for an interview tomorrow"}
+            )
+
+        self.assertEqual(response.status_code, 422)
+        mock_record.assert_called_once()
+        logged_entry = mock_record.call_args.args[0]
+        self.assertIn("jd_gate", logged_entry["reason"])
+        self.assertIn("invited for an interview", logged_entry["textSnippet"])
+
     def test_valid_jd_passes_the_gate_and_returns_a_full_result(self):
         response = self.client.post(
             "/api/analyze",

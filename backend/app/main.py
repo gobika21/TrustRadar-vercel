@@ -21,7 +21,15 @@ from app.cache import get_cached_verification, store_cached_verification
 from app.rate_limit import enforce_rate_limit
 from app.metrics import METRICS, build_usage_snapshot, metrics_payload
 from app.scoring import STRONG_SCAM_PATTERN_IDS, evidence_score, pattern_check, score_to_tier
-from app.storage import clear_analyses, get_analysis, initialize_database, list_analyses, save_analysis
+from app.storage import (
+    clear_analyses,
+    get_analysis,
+    initialize_database,
+    list_analyses,
+    list_blocked_attempts,
+    record_blocked_attempt,
+    save_analysis,
+)
 from app.text_utils import domain_from_url, extract_emails, extract_urls, looks_like_valid_jd
 from app.uploads import read_uploads
 from app.verification import (
@@ -100,6 +108,39 @@ async def delete_history() -> dict[str, str]:
     return {"status": "cleared"}
 
 
+@app.get("/api/blocked-attempts")
+async def blocked_attempts(response: Response, limit: int = 50) -> list[dict[str, Any]]:
+    """Submissions that consumed a Claude call but were rejected before scoring.
+
+    Not surfaced in the app's own UI -- this is purely for checking API usage
+    that wouldn't otherwise show up in /api/history, since a rejected
+    submission still costs a real API call but never reaches save_analysis.
+    """
+    response.headers["Cache-Control"] = "no-store"
+    try:
+        return list_blocked_attempts(max(1, min(limit, 200)))
+    except Exception as exc:
+        print(f"Warning: failed to load blocked attempts: {exc}")
+        return []
+
+
+def _log_blocked_attempt(text: str, reason: str) -> None:
+    try:
+        record_blocked_attempt(
+            {
+                "id": str(uuid4()),
+                "createdAt": datetime.now(timezone.utc).isoformat(),
+                "reason": reason[:200],
+                "textSnippet": text.strip()[:300],
+            }
+        )
+    except Exception as exc:
+        # Same graceful-degradation rule as everywhere else: a logging
+        # failure must never block the actual response the caller is
+        # waiting for.
+        print(f"Warning: failed to record blocked attempt: {exc}")
+
+
 @app.post("/api/analyze")
 async def analyze(
     request: Request,
@@ -131,6 +172,12 @@ async def analyze(
         jd_check = await check_jd_validity(analysis_text)
         is_valid_jd = jd_check["is_valid_jd"] if jd_check is not None else looks_like_valid_jd(analysis_text)
         if not is_valid_jd:
+            # This branch only runs a real Claude call (the JD-analyzer, above)
+            # when agents are enabled, and it exits before ever reaching
+            # save_analysis -- log it separately so a rejected attempt doesn't
+            # cost money with zero trace anywhere.
+            if jd_check is not None:
+                _log_blocked_attempt(analysis_text, "jd_gate: insufficient detail")
             raise HTTPException(
                 status_code=422,
                 detail=(
@@ -189,7 +236,13 @@ async def analyze(
                 "Do not share passport, Emirates ID, bank details, or OTPs until the employer is verified.",
             ],
         }
-    except HTTPException:
+    except HTTPException as exc:
+        # By this point the agentic analysis (up to several real Claude
+        # calls) and live verification have already run -- e.g. the job URL
+        # turned out to be inaccessible, so assert_job_url_accessible raised
+        # instead of returning a scored result. That still cost money and,
+        # same as the JD-gate rejection above, never reaches save_analysis.
+        _log_blocked_attempt(analysis_text, f"http_{exc.status_code}: {exc.detail}")
         raise
     except Exception:
         METRICS["analysis_errors"] += 1
