@@ -1,6 +1,23 @@
 import React from "react";
-import { CheckCircle2, ExternalLink, Globe, Radar, ShieldAlert, ShieldCheck, Sparkles } from "lucide-react";
-import { severityLabel, tierClass } from "../utils/risk";
+import {
+  AlertTriangle,
+  Bell,
+  Briefcase,
+  Check,
+  Clock3,
+  ExternalLink,
+  Globe,
+  Lock,
+  Mail,
+  Radar,
+  Search,
+  ShieldAlert,
+  ShieldCheck,
+  ShieldOff,
+  Sparkles,
+  Users,
+} from "lucide-react";
+import { tierClass } from "../utils/risk";
 
 const loadingSteps = [
   { at: 8, label: "Reading the job post" },
@@ -10,157 +27,302 @@ const loadingSteps = [
   { at: 88, label: "Building your recommendation" },
 ];
 
-export function ResultPanel({ result, loading, progress = 0 }) {
+export function ResultPanel({ result, loading, progress = 0, emptyHint = "scan" }) {
   if (loading) return <LoadingPanel progress={progress} />;
-  if (!result) return <EmptyPanel />;
+  if (!result) return <EmptyPanel hint={emptyHint} />;
 
   const recommendation = result.recommendation || fallbackRecommendation(result);
   const evidence = buildEvidenceList(result);
+  const tone = tierClass(result.tier_level);
+  const categories = deriveCategoryScores(result, evidence);
 
   return (
-    <aside className={`result-panel verdict-panel ${tierClass(result.tier_level)}`}>
-      <section className="verdict-hero">
+    <aside className={`card tone-${tone} @container grid content-start gap-4 p-5.5 min-h-[460px]`}>
+      <section
+        className="flex items-start gap-6 pb-5 border-b"
+        style={{ borderColor: "color-mix(in srgb, var(--tone) 30%, var(--color-line))" }}
+      >
+        <ScoreGauge score={result.score} tierLevel={result.tier_level} />
         <div>
-          <h2>{recommendation.label}</h2>
-          <p>{recommendation.detail}</p>
+          <h2
+            className="m-0 mb-2 font-display font-semibold text-[1.5rem] uppercase tracking-tight"
+            style={{ color: "var(--tone-strong)" }}
+          >
+            {recommendation.label}
+          </h2>
+          <p className="m-0 max-w-[520px] text-[0.88rem] leading-relaxed text-muted">{recommendation.detail}</p>
         </div>
-        <ScoreGauge score={result.score} />
       </section>
 
-      <KeySignals evidence={evidence} />
-      <LiveVerification evidence={evidence} />
-      <NextSteps recommendations={result.recommendations} />
+      <SubScores categories={categories} />
+
+      <div className="grid grid-cols-1 @lg:grid-cols-2 items-start gap-x-6 gap-y-4">
+        <WhyThisScore evidence={evidence} />
+        <NextSteps recommendations={result.recommendations} />
+      </div>
     </aside>
   );
 }
 
-function KeySignals({ evidence }) {
-  const signals = buildKeySignals(evidence);
+const CATEGORY_DEFS = [
+  { key: "domain", label: "Domain & Hosting", icon: Globe, keywords: ["domain", "whois", "registra", "hosting", "dns", "nameserver", "ssl", "certificate"] },
+  { key: "content", label: "Content Signals", icon: ShieldAlert, keywords: ["scam", "urgen", "language", "promise", "fee", "salary", "pattern", "phrase", "grammar", "pressure"] },
+  { key: "company", label: "Company Presence", icon: Briefcase, keywords: ["website", "footprint", "company", "profile", "about", "linkedin"] },
+  { key: "social", label: "Social & Reputation", icon: Users, keywords: ["search", "review", "complaint", "reputation", "report", "fraud", "warning"] },
+  { key: "technical", label: "Technical Trust", icon: Lock, keywords: ["ssl", "certificate", "https", "security", "encrypt", "technical"] },
+];
+
+function deriveCategoryScores(result, evidence) {
+  const overall = Math.max(0, Math.min(100, result.score ?? 50));
+
+  return CATEGORY_DEFS.map((def) => {
+    const matches = evidence.filter((item) => {
+      const haystack = `${item.label || ""} ${item.detail || ""} ${item.takeaway || ""}`.toLowerCase();
+      return def.keywords.some((keyword) => haystack.includes(keyword));
+    });
+
+    let score = overall;
+    let touched = false;
+    matches.forEach((item) => {
+      touched = true;
+      if (item.severity === "critical" || item.severity === "high") score -= 30;
+      else if (item.severity === "medium") score -= 15;
+      else if (item.severity === "info" || item.severity === "positive") score += 8;
+    });
+
+    score = Math.max(0, Math.min(100, Math.round(score)));
+    return { ...def, score, tier: scoreTier(score), touched };
+  });
+}
+
+function scoreTier(score) {
+  if (score < 30) return { label: "Very Low", tone: "var(--color-red)" };
+  if (score < 55) return { label: "Low", tone: "var(--color-amber)" };
+  if (score < 75) return { label: "Moderate", tone: "var(--color-amber)" };
+  return { label: "High", tone: "var(--color-green)" };
+}
+
+function SubScores({ categories }) {
+  return (
+    <section className="grid grid-cols-2 @sm:grid-cols-3 @lg:grid-cols-5 gap-px bg-line rounded-lg overflow-hidden border border-line">
+      {categories.map((category) => {
+        const Icon = category.icon;
+        return (
+          <div key={category.key} className="bg-panel p-3.5">
+            <div className="flex items-start gap-1.5 mb-2.5 min-h-[2.4em] text-[0.72rem] font-semibold leading-tight text-muted">
+              <Icon size={13} className="flex-none mt-0.5" />
+              <span>{category.label}</span>
+            </div>
+            <div className="font-display font-bold text-[1.4rem] leading-none text-ink">
+              {category.score}
+              <span className="font-sans font-normal text-[0.78rem] text-muted">/100</span>
+            </div>
+            <div
+              className="mt-1.5 mb-2.5 text-[0.68rem] font-extrabold uppercase tracking-wide"
+              style={{ color: category.tier.tone }}
+            >
+              {category.tier.label}
+            </div>
+            <div className="h-1 rounded-full bg-field overflow-hidden">
+              <div
+                className="h-full rounded-full"
+                style={{ width: `${category.score}%`, background: category.tier.tone }}
+              />
+            </div>
+          </div>
+        );
+      })}
+    </section>
+  );
+}
+
+const IMPACT_TONE_CLASSES = {
+  red: { badge: "bg-red-strong" },
+  amber: { badge: "bg-amber-strong" },
+  green: { badge: "bg-green-strong" },
+};
+
+function WhyThisScore({ evidence }) {
+  const notable = evidence.filter((item) => item.severity);
+  const items = notable.length
+    ? notable
+    : [
+        {
+          label: "No notable scam signals",
+          severity: "positive",
+          detail: "No scam-language patterns or negative public signals were found for this posting.",
+        },
+      ];
 
   return (
-    <section className="report-section key-signals">
-      <h3>What drove this result</h3>
-      <ul className="signal-list">
-        {signals.length ? (
-          signals.map((signal, index) => (
-            <li key={index} className={signal.severity}>
-              {signal.severity === "info" || signal.severity === "positive" ? (
-                <CheckCircle2 size={15} />
-              ) : (
-                <ShieldAlert size={15} />
-              )}
-              <span>{signal.text}</span>
+    <section>
+      <h3 className="m-0 mb-2.5 text-[0.82rem] font-bold uppercase tracking-wide text-muted">Why this score?</h3>
+      <ul className="m-0 grid p-0 list-none rounded-lg border border-line overflow-hidden bg-panel">
+        {items.map((item, index) => {
+          const isPositive = item.severity === "info" || item.severity === "positive";
+          const isHigh = item.severity === "critical" || item.severity === "high";
+          const toneClasses = IMPACT_TONE_CLASSES[isPositive ? "green" : isHigh ? "red" : "amber"];
+          return (
+            <li
+              key={index}
+              className={`flex items-start gap-3 px-4 py-3.5 ${index < items.length - 1 ? "border-b border-line" : ""}`}
+            >
+              <span
+                className={`grid h-8 w-8 flex-none place-items-center rounded-full text-white ${toneClasses.badge}`}
+              >
+                {isPositive ? <Check size={17} strokeWidth={3} /> : <AlertTriangle size={16} strokeWidth={2.5} />}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="text-[0.85rem] font-semibold text-ink">{item.label}</div>
+                <div className="text-[0.78rem] text-muted leading-relaxed">{item.takeaway || item.detail}</div>
+                {item.links?.length ? (
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    <span className="w-full -mb-0.5 text-[0.68rem] font-bold uppercase tracking-wide text-muted-2">
+                      Sources
+                    </span>
+                    {item.links.slice(0, 3).map((link) => (
+                      <a
+                        className="inline-flex items-center gap-1 rounded-full border border-line bg-field px-2.5 py-1.5 text-[0.72rem] font-semibold text-amber-strong no-underline hover:border-amber/45"
+                        href={link.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        key={`${item.label}-${link.url}`}
+                      >
+                        {link.label} <ExternalLink size={12} />
+                      </a>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
             </li>
-          ))
-        ) : (
-          <li className="info">
-            <CheckCircle2 size={15} />
-            <span>No notable scam signals were found in the text or evidence gathered.</span>
-          </li>
-        )}
+          );
+        })}
       </ul>
     </section>
   );
 }
 
-function buildKeySignals(evidence) {
-  const notable = evidence.filter((item) => item.severity && item.severity !== "info");
-  if (!notable.length) {
-    return [
-      {
-        severity: "positive",
-        text: "No scam-language patterns or negative public signals were found for this posting.",
-      },
-    ];
-  }
-  return notable.map((item) => ({
-    severity: item.severity,
-    text: item.takeaway || item.detail,
-  }));
-}
+const NEXT_STEP_ICONS = [ShieldOff, Search, Mail, Users, Bell];
 
 function NextSteps({ recommendations }) {
   if (!recommendations?.length) return null;
   return (
-    <section className="report-section next-steps">
-      <h3>What to do next</h3>
-      <ul className="next-steps-list">
-        {recommendations.map((tip, index) => (
-          <li key={index}>{tip}</li>
-        ))}
+    <section>
+      <h3 className="m-0 mb-2.5 text-[0.82rem] font-bold uppercase tracking-wide text-muted">Recommended next steps</h3>
+      <ul className="m-0 grid p-0 list-none rounded-lg border border-line overflow-hidden bg-panel">
+        {recommendations.map((tip, index) => {
+          const Icon = NEXT_STEP_ICONS[index % NEXT_STEP_ICONS.length];
+          return (
+            <li
+              key={index}
+              className={`flex items-center gap-3 px-4 py-3.5 ${
+                index < recommendations.length - 1 ? "border-b border-line" : ""
+              }`}
+            >
+              <span className="grid h-8 w-8 flex-none place-items-center rounded-md bg-amber/15 text-amber-strong">
+                <Icon size={14} />
+              </span>
+              <div className="text-[0.85rem] leading-relaxed text-ink">{tip}</div>
+            </li>
+          );
+        })}
       </ul>
     </section>
   );
 }
 
-const GAUGE_TICKS = 26;
-const GAUGE_STOPS = [
-  { t: 0, rgb: [22, 163, 74] },
-  { t: 0.25, rgb: [132, 204, 22] },
-  { t: 0.5, rgb: [234, 179, 8] },
-  { t: 0.75, rgb: [249, 115, 22] },
-  { t: 1, rgb: [239, 68, 68] },
-];
+const TIER_TONE = {
+  critical: { color: "var(--color-red)", label: "Very Low" },
+  high: { color: "var(--color-red)", label: "Low" },
+  medium: { color: "var(--color-amber)", label: "Moderate" },
+  low: { color: "var(--color-green)", label: "High" },
+};
 
-function gaugeColor(t) {
-  for (let i = 0; i < GAUGE_STOPS.length - 1; i += 1) {
-    const start = GAUGE_STOPS[i];
-    const end = GAUGE_STOPS[i + 1];
-    if (t >= start.t && t <= end.t) {
-      const span = end.t - start.t || 1;
-      const localT = (t - start.t) / span;
-      const rgb = start.rgb.map((channel, index) => Math.round(channel + (end.rgb[index] - channel) * localT));
-      return `rgb(${rgb.join(",")})`;
-    }
-  }
-  return `rgb(${GAUGE_STOPS[GAUGE_STOPS.length - 1].rgb.join(",")})`;
-}
+function ScoreGauge({ score, tierLevel }) {
+  const clamped = Math.max(0, Math.min(100, score));
+  const tone = TIER_TONE[tierLevel] || TIER_TONE.medium;
 
-function ScoreGauge({ score }) {
-  const activeT = Math.max(0, Math.min(100, score)) / 100;
   return (
-    <div className="score-gauge">
-      <svg viewBox="0 0 120 68" aria-hidden="true">
-        {Array.from({ length: GAUGE_TICKS }).map((_, index) => {
-          const t = index / (GAUGE_TICKS - 1);
-          const angle = -90 + t * 180;
-          const isActive = t <= activeT;
-          return (
-            <line
-              key={index}
-              x1="60"
-              y1="8"
-              x2="60"
-              y2="21"
-              stroke={isActive ? gaugeColor(t) : "var(--line)"}
-              strokeWidth="4.4"
-              strokeLinecap="round"
-              transform={`rotate(${angle} 60 64)`}
-            />
-          );
-        })}
+    <div className="relative h-[130px] w-[130px] flex-none">
+      <svg viewBox="0 0 200 200" className="h-full w-full -rotate-90 overflow-visible">
+        <circle cx="100" cy="100" r="80" pathLength="100" fill="none" stroke="var(--color-line)" strokeWidth="13" />
+        <circle
+          cx="100"
+          cy="100"
+          r="80"
+          pathLength="100"
+          fill="none"
+          stroke="var(--color-panel)"
+          strokeWidth="3"
+          strokeDasharray="0.6 24.4"
+          strokeDashoffset="-0.3"
+        />
+        <circle
+          cx="100"
+          cy="100"
+          r="80"
+          pathLength="100"
+          fill="none"
+          stroke={tone.color}
+          strokeWidth="13"
+          strokeLinecap="round"
+          style={{
+            "--gauge-value": `${clamped} 100`,
+            strokeDasharray: `${clamped} 100`,
+            animation: "gauge-sweep 1.1s cubic-bezier(.16,1,.3,1) 0.2s backwards",
+          }}
+        />
       </svg>
-      <div className="score-gauge-readout">
-        <strong>{score}</strong>
-        <span>out of 100</span>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <div className="font-display font-bold text-[2.15rem] leading-none text-ink">{score}</div>
+        <div className="mt-0.5 font-mono text-[0.62rem] text-muted">OUT OF 100</div>
+        <span
+          className="mt-1.5 inline-flex items-center gap-1.5 font-mono text-[0.62rem] font-bold uppercase tracking-wide"
+          style={{ color: tone.color }}
+        >
+          <span className="h-1.5 w-1.5 rounded-full" style={{ background: "currentColor" }} />
+          {tone.label}
+        </span>
       </div>
     </div>
   );
 }
 
-function EmptyPanel() {
+function EmptyPanel({ hint = "scan" }) {
+  if (hint === "history") {
+    return (
+      <aside className="card grid content-center justify-items-center gap-3.5 p-12 py-14 text-center min-h-[460px]">
+        <div className="grid h-15.5 w-15.5 place-items-center rounded-xl bg-amber/16 text-amber-strong">
+          <Clock3 size={30} />
+        </div>
+        <h2 className="m-0 font-display font-semibold text-[1.5rem] uppercase tracking-tight">Pick a check to review</h2>
+        <p className="m-0 max-w-[440px] text-[0.9rem] leading-relaxed text-muted">
+          Select any entry from Recent checks to see its full score breakdown, evidence, and recommendation again.
+        </p>
+      </aside>
+    );
+  }
+
   return (
-    <aside className="result-panel intro-panel">
-      <div className="intro-icon"><Radar size={30} /></div>
-      <h2>Know before you apply.</h2>
-      <p>
-        Paste a job post, recruiter message, or link. TrustRadar checks scam patterns,
-        employer signals, domains, and public web results, then gives a clear recommendation.
+    <aside className="card grid content-center justify-items-center gap-3.5 p-12 py-14 text-center min-h-[460px]">
+      <div className="grid h-15.5 w-15.5 place-items-center rounded-xl bg-amber/16 text-amber-strong">
+        <Radar size={30} />
+      </div>
+      <h2 className="m-0 font-display font-semibold text-[1.5rem] uppercase tracking-tight">Know before you apply.</h2>
+      <p className="m-0 max-w-[440px] text-[0.9rem] leading-relaxed text-muted">
+        Paste a job post, recruiter message, or link. TrustRadar checks scam patterns, employer signals, domains, and
+        public web results, then gives a clear recommendation.
       </p>
-      <div className="trust-cards">
-        <span><ShieldCheck size={16} /> Scam patterns</span>
-        <span><Globe size={16} /> Employer proof</span>
-        <span><Sparkles size={16} /> Apply guidance</span>
+      <div className="flex flex-wrap justify-center gap-2.5 mt-1.5">
+        <span className="flex items-center gap-1.5 rounded-full border border-line bg-field px-3.5 py-2 text-[0.78rem] font-semibold text-muted">
+          <ShieldCheck size={16} /> Scam patterns
+        </span>
+        <span className="flex items-center gap-1.5 rounded-full border border-line bg-field px-3.5 py-2 text-[0.78rem] font-semibold text-muted">
+          <Globe size={16} /> Employer proof
+        </span>
+        <span className="flex items-center gap-1.5 rounded-full border border-line bg-field px-3.5 py-2 text-[0.78rem] font-semibold text-muted">
+          <Sparkles size={16} /> Apply guidance
+        </span>
       </div>
     </aside>
   );
@@ -170,71 +332,35 @@ function LoadingPanel({ progress }) {
   const activeStep = [...loadingSteps].reverse().find((step) => progress >= step.at) || loadingSteps[0];
 
   return (
-    <aside className="result-panel loading-panel">
-      <div className="loading-ring" aria-hidden="true">
-        <svg viewBox="0 0 100 100">
-          <circle className="ring-track" cx="50" cy="50" r="42" />
+    <aside className="card grid content-center justify-items-center gap-1.5 p-12 py-14 text-center min-h-[460px]">
+      <div className="relative grid place-items-center h-27 w-27 mb-2.5">
+        <svg viewBox="0 0 100 100" className="h-full w-full -rotate-90">
+          <circle cx="50" cy="50" r="42" fill="none" stroke="var(--color-line)" strokeWidth="8" />
           <circle
-            className="ring-progress"
             cx="50"
             cy="50"
             r="42"
-            style={{ strokeDashoffset: 264 - (264 * progress) / 100 }}
+            fill="none"
+            stroke="var(--color-amber)"
+            strokeWidth="8"
+            strokeLinecap="round"
+            strokeDasharray="264"
+            style={{ strokeDashoffset: 264 - (264 * progress) / 100, transition: "stroke-dashoffset 0.3s ease" }}
           />
         </svg>
-        <strong>{progress}%</strong>
+        <strong className="absolute font-display text-[1.2rem] font-bold tabular-nums">{progress}%</strong>
       </div>
-      <p className="eyebrow">Review in progress</p>
-      <h2>Checking the posting</h2>
-      <p className="loading-step" aria-live="polite">{activeStep.label}&hellip;</p>
+      <p className="m-0 mb-1 text-[0.7rem] font-extrabold uppercase tracking-widest text-amber-strong opacity-85">
+        Review in progress
+      </p>
+      <h2 className="m-0 font-display font-semibold text-[1.35rem] uppercase tracking-tight">Checking the posting</h2>
+      <p className="m-0 min-h-[1.4em] text-[0.88rem] text-muted" aria-live="polite">
+        {activeStep.label}&hellip;
+      </p>
     </aside>
   );
 }
 
-function LiveVerification({ evidence }) {
-  const reviewedEvidence = evidence || [];
-
-  return (
-    <section className="report-section compact-live">
-      <h3>Evidence reviewed</h3>
-      <div className="evidence-list">
-        {reviewedEvidence.length ? reviewedEvidence.map((item, index) => (
-          <article className="evidence" key={`${item.label}-${index}`}>
-            <Globe size={16} />
-            <div>
-              <div className="evidence-title">
-                <strong>{item.label}</strong>
-                <span className={item.severity}>{severityLabel(item.severity)}</span>
-              </div>
-              <p>{item.takeaway || item.detail}</p>
-              {item.links?.length ? (
-                <div className="evidence-links">
-                  <span className="evidence-links-label">Sources</span>
-                  {item.links.slice(0, 3).map((link) => (
-                    <a href={link.url} target="_blank" rel="noreferrer" key={`${item.label}-${link.url}`}>
-                      {link.label} <ExternalLink size={12} />
-                    </a>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-          </article>
-        )) : (
-          <article className="evidence">
-            <Globe size={16} />
-            <div>
-              <div className="evidence-title">
-                <strong>No live evidence found</strong>
-                <span className="medium">Review</span>
-              </div>
-              <p>Paste a public job link or company site if you want TrustRadar to verify domains and web signals.</p>
-            </div>
-          </article>
-        )}
-      </div>
-    </section>
-  );
-}
 
 function fallbackRecommendation(result) {
   if (result.tier_level === "critical") {
