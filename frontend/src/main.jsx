@@ -147,7 +147,11 @@ function App() {
     <>
       <div className="hazard-band" aria-hidden="true" />
       <main className="max-w-[1440px] mx-auto px-6 pb-16 pt-7">
-        <AppHeader activeTab={activeTab} onTabChange={setActiveTab} historyCount={searchHistory.length} />
+        <AppHeader
+          activeTab={activeTab}
+          onTabChange={(tab) => (tab === "scan" ? startNewSearch() : setActiveTab(tab))}
+          historyCount={searchHistory.length}
+        />
         <Toast error={error} onDismiss={() => setError(null)} />
 
         {activeTab === "scan" ? (
