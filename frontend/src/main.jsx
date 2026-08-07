@@ -7,7 +7,6 @@ import { HistoryPanel } from "./components/HistoryPanel";
 import { ResultPanel } from "./components/ResultPanel";
 import { Toast } from "./components/Toast";
 import { API_URL, HISTORY_URL } from "./config/api";
-import { ThemeProvider } from "./context/ThemeProvider";
 import "./styles.css";
 
 const HISTORY_STORAGE_KEY = "trustradar:recent-checks";
@@ -189,10 +188,10 @@ function App() {
 }
 
 createRoot(document.getElementById("root")).render(
-  <ThemeProvider>
+  <>
     <App />
     <Analytics />
-  </ThemeProvider>,
+  </>,
 );
 
 function readStoredHistory() {

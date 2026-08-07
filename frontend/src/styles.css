@@ -1,7 +1,5 @@
 @import "tailwindcss";
 
-@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
-
 @theme {
   --font-display: "Oswald", sans-serif;
   --font-sans: "IBM Plex Sans", sans-serif;
@@ -42,25 +40,6 @@
   --tr-shadow-card: 0 1px 2px rgba(23, 20, 12, 0.06), 0 8px 24px -12px rgba(23, 20, 12, 0.12);
   --tr-shadow-pop: 0 20px 44px -18px rgba(23, 20, 12, 0.28);
   color-scheme: light;
-}
-
-[data-theme="dark"] {
-  --tr-paper: #14120c;
-  --tr-panel: #1c1912;
-  --tr-field: #1c1912;
-  --tr-line: #33301f;
-  --tr-ink: #f1ece0;
-  --tr-muted: #9c9480;
-  --tr-muted-2: #706a58;
-  --tr-amber: #e0a83a;
-  --tr-amber-strong: #f0bd5a;
-  --tr-red: #e2685c;
-  --tr-red-strong: #eb897f;
-  --tr-green: #6fb87e;
-  --tr-green-strong: #8fcb9b;
-  --tr-shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px -12px rgba(0, 0, 0, 0.5);
-  --tr-shadow-pop: 0 24px 60px -20px rgba(0, 0, 0, 0.7);
-  color-scheme: dark;
 }
 
 @layer base {
