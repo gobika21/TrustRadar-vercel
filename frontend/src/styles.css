@@ -90,16 +90,13 @@
   .badge {
     @apply inline-flex items-center rounded-full border border-line px-2.5 py-0.5 text-[0.66rem] font-extrabold uppercase tracking-wide text-muted;
   }
-  .badge-critical,
-  .badge-high {
+  .badge-critical {
     @apply text-red-strong border-red/40 bg-red/10;
   }
   .badge-medium {
     @apply text-amber-strong border-amber/40 bg-amber/10;
   }
-  .badge-info,
-  .badge-positive,
-  .badge-low {
+  .badge-info {
     @apply text-green-strong border-green/40 bg-green/10;
   }
 
