@@ -50,28 +50,55 @@ export function Toast({ error, message, onDismiss }) {
   if (!isOpen) return null;
 
   const ToneIcon = TONE_ICONS[normalizedError.tone] || AlertTriangle;
+  const toneClass =
+    normalizedError.tone === "danger" ? "tone-danger" : normalizedError.tone === "info" ? "tone-review" : "tone-warning";
 
   return (
-    <div className="error-modal-backdrop" role="presentation">
+    <div
+      className="fixed inset-0 z-50 grid place-items-center p-6 bg-black/50 backdrop-blur-sm animate-[fade-in_0.15s_ease]"
+      role="presentation"
+    >
       <section
-        className={`error-modal ${normalizedError.tone}`}
+        className={`card relative w-[min(440px,100%)] grid justify-items-center gap-4 px-7 py-8 pb-6.5 text-center shadow-[var(--shadow-pop)] ${toneClass}`}
+        style={{
+          background: "color-mix(in srgb, var(--tone) 5%, var(--color-panel))",
+          animation: "modal-pop-in 0.18s cubic-bezier(0.16,1,0.3,1)",
+        }}
         role="alertdialog"
         aria-modal="true"
         aria-labelledby="error-modal-title"
         ref={modalRef}
         tabIndex={-1}
       >
-        <button className="error-modal-close" type="button" onClick={onDismiss} aria-label="Close error">
+        <button
+          className="absolute top-4 right-4 grid h-7.5 w-7.5 place-items-center rounded-full border border-line bg-field text-muted transition-colors hover:text-ink hover:border-[color:var(--tone)]/45"
+          type="button"
+          onClick={onDismiss}
+          aria-label="Close error"
+        >
           <X size={16} />
         </button>
-        <div className="error-modal-icon">
+        <div
+          className="grid h-15 w-15 place-items-center rounded-full border-2 text-[color:var(--tone-strong)]"
+          style={{
+            background: "color-mix(in srgb, var(--tone) 14%, var(--color-panel))",
+            borderColor: "color-mix(in srgb, var(--tone) 45%, var(--color-line))",
+          }}
+        >
           <ToneIcon size={26} />
         </div>
         <div>
-          <h2 id="error-modal-title">{normalizedError.title}</h2>
-          <p>{normalizedError.message}</p>
+          <h2 id="error-modal-title" className="m-0 mb-1.5 font-display font-semibold text-[1.15rem] uppercase tracking-tight">
+            {normalizedError.title}
+          </h2>
+          <p className="m-0 text-[0.88rem] leading-relaxed text-muted">{normalizedError.message}</p>
         </div>
-        <button className="error-modal-action" type="button" onClick={onDismiss}>
+        <button
+          className="rounded-lg border-none px-6.5 py-3 font-bold text-[0.88rem] text-white transition-transform hover:-translate-y-px"
+          style={{ background: "var(--tone-strong)" }}
+          type="button"
+          onClick={onDismiss}
+        >
           {normalizedError.action}
         </button>
       </section>

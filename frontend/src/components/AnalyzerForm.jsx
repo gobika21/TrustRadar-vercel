@@ -41,16 +41,19 @@ export function AnalyzerForm({
   }
 
   return (
-    <form className="input-panel" onSubmit={onAnalyze}>
-      <div className="panel-heading">
-        <div>
-          <h2>Review a job before you apply</h2>
-        </div>
+    <form className="card grid gap-4 p-5.5" onSubmit={onAnalyze}>
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="m-0 font-display font-semibold text-[1.2rem] uppercase tracking-tight">
+          Review a job before you apply
+        </h2>
       </div>
 
-      <label className="field large-field">
-        <span>Paste the job post or recruiter message</span>
+      <label className="grid gap-2">
+        <span className="flex items-center gap-1.5 text-[0.78rem] font-bold text-muted">
+          Paste the job post or recruiter message
+        </span>
         <textarea
+          className="field-input min-h-[132px] resize-y leading-relaxed"
           value={text}
           onChange={(event) => setText(event.target.value)}
           onPaste={handlePaste}
@@ -58,12 +61,19 @@ export function AnalyzerForm({
         />
       </label>
 
-      <label className="field">
-        <span><Link2 size={15} /> Job or company link</span>
-        <input value={linkUrl} onChange={(event) => setLinkUrl(event.target.value)} placeholder="Paste any relevant URL" />
+      <label className="grid gap-2">
+        <span className="flex items-center gap-1.5 text-[0.78rem] font-bold text-muted">
+          <Link2 size={15} /> Job or company link
+        </span>
+        <input
+          className="field-input"
+          value={linkUrl}
+          onChange={(event) => setLinkUrl(event.target.value)}
+          placeholder="Paste any relevant URL"
+        />
       </label>
 
-      <label className="upload-box">
+      <label className="relative flex items-center justify-center gap-2 rounded-lg border border-dashed border-amber/45 bg-amber/6 px-4 py-3 text-[0.82rem] font-bold text-amber-strong transition-colors hover:bg-amber/12">
         <Upload size={18} />
         <span>
           {files.length
@@ -71,6 +81,7 @@ export function AnalyzerForm({
             : "Attach screenshots or files, or paste an image (Ctrl/Cmd+V)"}
         </span>
         <input
+          className="absolute h-px w-px opacity-0 pointer-events-none"
           type="file"
           multiple
           accept="image/*,.pdf,.txt"
@@ -82,18 +93,18 @@ export function AnalyzerForm({
         />
       </label>
 
-      <p className="privacy-note">
-        <Info size={14} />
+      <p className="m-0 flex items-start gap-2 rounded-md border border-amber/30 bg-amber/10 px-3 py-2.5 text-[0.76rem] leading-snug text-amber-strong">
+        <Info size={14} className="mt-px flex-none" />
         Avoid uploading passports, IDs, bank details, OTPs, or private offer documents.
       </p>
 
-      <div className="form-actions">
-        <button className={`analyze-button${loading ? " is-loading" : ""}`} type="submit" disabled={!hasInput || loading}>
+      <div className="flex items-stretch gap-2.5">
+        <button className="btn-primary flex-1" type="submit" disabled={!hasInput || loading}>
           {loading ? (
             <>
-              <Loader2 className="spin" size={18} />
+              <Loader2 className="animate-spin" size={18} />
               <span>Analyzing</span>
-              <strong>{progress}%</strong>
+              <strong className="font-extrabold opacity-90">{progress}%</strong>
             </>
           ) : (
             <>
@@ -103,7 +114,7 @@ export function AnalyzerForm({
           )}
         </button>
         {showReset ? (
-          <button className="reset-button" type="button" onClick={onReset}>
+          <button className="btn-ghost flex-none whitespace-nowrap" type="button" onClick={onReset}>
             <RotateCcw size={14} /> New search
           </button>
         ) : null}

@@ -7,7 +7,6 @@ import { HistoryPanel } from "./components/HistoryPanel";
 import { ResultPanel } from "./components/ResultPanel";
 import { Toast } from "./components/Toast";
 import { API_URL, HISTORY_URL } from "./config/api";
-import { ThemeProvider } from "./context/ThemeProvider";
 import "./styles.css";
 
 const HISTORY_STORAGE_KEY = "trustradar:recent-checks";
@@ -23,6 +22,7 @@ function App() {
   const [progress, setProgress] = useState(0);
   const [searchHistory, setSearchHistory] = useState(() => readStoredHistory());
   const [selectedHistoryId, setSelectedHistoryId] = useState(null);
+  const [activeTab, setActiveTab] = useState("scan");
 
   const hasInput = useMemo(
     () => text.trim() || linkUrl.trim() || files.length,
@@ -129,6 +129,7 @@ function App() {
     setResult(null);
     setError(null);
     setSelectedHistoryId(null);
+    setActiveTab("scan");
   }
 
   async function clearHistory() {
@@ -142,45 +143,55 @@ function App() {
   }
 
   return (
-    <main className="shell">
-      <AppHeader />
-      <Toast error={error} onDismiss={() => setError(null)} />
+    <>
+      <div className="hazard-band" aria-hidden="true" />
+      <main className="max-w-[1440px] mx-auto px-6 pb-16 pt-7">
+        <AppHeader
+          activeTab={activeTab}
+          onTabChange={(tab) => (tab === "scan" ? startNewSearch() : setActiveTab(tab))}
+          historyCount={searchHistory.length}
+        />
+        <Toast error={error} onDismiss={() => setError(null)} />
 
-      <section className="workspace">
-        <section className="left-stack">
-          <AnalyzerForm
-            text={text}
-            setText={setText}
-            linkUrl={linkUrl}
-            setLinkUrl={setLinkUrl}
-            files={files}
-            setFiles={setFiles}
-            hasInput={hasInput}
-            loading={loading}
-            progress={progress}
-            onAnalyze={analyze}
-            showReset={Boolean(hasInput || result) && !loading}
-            onReset={startNewSearch}
-          />
-          <HistoryPanel
-            history={searchHistory}
-            onSelect={selectHistory}
-            onClear={clearHistory}
-            selectedId={selectedHistoryId}
-          />
-        </section>
-
-        <ResultPanel result={result} loading={loading} progress={progress} />
-      </section>
-    </main>
+        {activeTab === "scan" ? (
+          <section className="grid grid-cols-1 md:grid-cols-[minmax(0,380px)_minmax(0,1fr)] gap-5 items-start mt-5.5">
+            <AnalyzerForm
+              text={text}
+              setText={setText}
+              linkUrl={linkUrl}
+              setLinkUrl={setLinkUrl}
+              files={files}
+              setFiles={setFiles}
+              hasInput={hasInput}
+              loading={loading}
+              progress={progress}
+              onAnalyze={analyze}
+              showReset={Boolean(hasInput || result) && !loading}
+              onReset={startNewSearch}
+            />
+            <ResultPanel result={result} loading={loading} progress={progress} />
+          </section>
+        ) : (
+          <section className="grid grid-cols-1 md:grid-cols-[minmax(0,380px)_minmax(0,1fr)] gap-5 items-start mt-5.5">
+            <HistoryPanel
+              history={searchHistory}
+              onSelect={selectHistory}
+              onClear={clearHistory}
+              selectedId={selectedHistoryId}
+            />
+            <ResultPanel result={result} loading={false} progress={0} emptyHint="history" />
+          </section>
+        )}
+      </main>
+    </>
   );
 }
 
 createRoot(document.getElementById("root")).render(
-  <ThemeProvider>
+  <>
     <App />
     <Analytics />
-  </ThemeProvider>,
+  </>,
 );
 
 function readStoredHistory() {
