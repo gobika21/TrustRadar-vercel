@@ -157,3 +157,19 @@
     transform: translateY(0) scale(1);
   }
 }
+
+@keyframes radar-sweep {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.radar-mark {
+  animation: radar-sweep 3.2s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .radar-mark {
+    animation: none;
+  }
+}
